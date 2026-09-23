@@ -3,21 +3,24 @@
 @tailwind utilities;
 
 :root {
-  --paper: #f3eee4;
-  --ink: #1c1915;
+  --paper: #12151a;
+  --ink: #e8edf2;
+  color-scheme: dark;
 }
 
 html,
 body {
-  background: var(--paper);
-  color: var(--ink);
+  background: #12151a;
+  color: #e8edf2;
   min-height: 100%;
 }
 
 body {
   background-image:
-    radial-gradient(ellipse at top left, rgba(31, 111, 91, 0.08), transparent 42%),
-    radial-gradient(ellipse at bottom right, rgba(194, 65, 12, 0.06), transparent 36%);
+    linear-gradient(180deg, #0e1116 0%, #161a20 42%, #12151a 100%);
+  font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
 }
 
 input,
@@ -27,21 +30,41 @@ button {
   font: inherit;
 }
 
+input,
+textarea,
+select {
+  color: #e8edf2;
+  background: #1a1f26;
+}
+
 .slot-card {
   min-width: 220px;
-  background: #fffdf8;
-  border: 1px solid #d9d0c3;
-  border-radius: 18px;
-  box-shadow: 0 8px 24px rgba(28, 25, 21, 0.06);
+  background: #1a1f26;
+  border: 1px solid #2a313a;
+  border-radius: 6px;
 }
 
 .urgent-badge {
-  background: #c2410c;
-  color: #fff7ed;
+  background: #be123c;
+  color: #fff;
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  border-radius: 999px;
+  border-radius: 2px;
   padding: 2px 8px;
   font-weight: 700;
+}
+
+.chip {
+  border: 1px solid #2a313a;
+  background: transparent;
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 4px;
+}
+
+.chip-on {
+  border-color: #6ea0ff;
+  color: #6ea0ff;
+  background: rgba(110, 160, 255, 0.1);
 }

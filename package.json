@@ -12,6 +12,7 @@
     "test:phase1": "node scripts/e2e-phase1.mjs"
   },
   "dependencies": {
+    "@fontsource/carlito": "^5.3.0",
     "@prisma/client": "^6.16.2",
     "bcryptjs": "^3.0.2",
     "jose": "^6.1.0",

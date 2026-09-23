@@ -45,7 +45,7 @@ export default function PublicFormPage() {
   return (
     <main className="mx-auto max-w-md px-6 py-16">
       <p className="text-xs uppercase tracking-[0.2em] text-pine">CRM-Time</p>
-      <h1 className="mt-2 font-serif text-4xl">Оставить заявку</h1>
+      <h1 className="mt-2 text-3xl font-semibold">Оставить заявку</h1>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <input name="name" required placeholder="Имя" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
         <input name="phone" required placeholder="Телефон" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />

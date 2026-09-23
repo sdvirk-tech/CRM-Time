@@ -36,7 +36,7 @@ export default function TeamPage() {
 
   return (
     <main className="p-8">
-      <h1 className="font-serif text-4xl">Команда</h1>
+      <h1 className="text-3xl font-semibold">Команда</h1>
       <p className="mt-2 text-muted">Владелец кладёт слоты. Менеджер берёт входящие и лиды, без токенов каналов.</p>
       <ul className="mt-6 space-y-2">
         {members.map((m) => (

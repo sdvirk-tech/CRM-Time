@@ -48,7 +48,7 @@ export default function LeadPage() {
   return (
     <main className="p-8">
       <div className="flex items-center gap-3">
-        <h1 className="font-serif text-4xl">Лид · {lead.contact.name}</h1>
+        <h1 className="text-3xl font-semibold">Лид · {lead.contact.name}</h1>
         {lead.urgent && <span className="urgent-badge">срочно</span>}
       </div>
       <p className="mt-2 text-muted">

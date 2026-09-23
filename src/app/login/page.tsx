@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 
 export default function LoginPage() {
   const [box, setBox] = useState(false);
-  const [error, setError] = useState("");
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -20,20 +19,19 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <p className="text-sm uppercase tracking-[0.2em] text-pine">CRM-Time</p>
-      <h1 className="mt-3 font-serif text-4xl">Вход в нож</h1>
+      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-pine">CRM-Time</p>
+      <h1 className="mt-3 text-3xl font-semibold">Вход</h1>
       <p className="mt-2 text-muted">Канал → AI → действие. Входящие и лиды рядом.</p>
-      {error && <p className="mt-4 text-sm text-urgent">{error}</p>}
       <form method="POST" action="/api/auth/login/form" className="mt-8 space-y-4">
         <label className="block text-sm">
           Почта
-          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" name="email" type="email" required />
+          <input className="mt-1 w-full rounded border border-line bg-slot px-3 py-2" name="email" type="email" required />
         </label>
         <label className="block text-sm">
           Пароль
-          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" name="password" type="password" required />
+          <input className="mt-1 w-full rounded border border-line bg-slot px-3 py-2" name="password" type="password" required />
         </label>
-        <button type="submit" className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper">
+        <button type="submit" className="w-full rounded bg-ink px-4 py-2.5 text-paper">
           Войти
         </button>
       </form>

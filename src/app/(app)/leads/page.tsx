@@ -42,12 +42,12 @@ export default function LeadsPage() {
 
   return (
     <main className="p-8">
-      <h1 className="font-serif text-4xl">Очередь лидов</h1>
+      <h1 className="text-3xl font-semibold">Очередь лидов</h1>
       <p className="mt-2 text-muted">Новые: {newCount}</p>
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col) => (
           <section key={col.key} className="rounded-2xl border border-line bg-slot p-3">
-            <h2 className="px-2 font-serif text-xl">{col.title}</h2>
+            <h2 className="px-2 text-lg font-semibold">{col.title}</h2>
             <ul className="mt-3 space-y-2">
               {items
                 .filter((l) => l.status === col.key)

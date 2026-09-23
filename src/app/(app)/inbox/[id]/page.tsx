@@ -64,7 +64,7 @@ export default function ConversationPage() {
     <main className="grid min-h-screen lg:grid-cols-[1fr_280px]">
       <section className="p-8">
         <div className="flex items-center gap-3">
-          <h1 className="font-serif text-4xl">{data.contact.name}</h1>
+          <h1 className="text-3xl font-semibold">{data.contact.name}</h1>
           {data.urgent && <span className="urgent-badge">срочно</span>}
         </div>
         <p className="mt-1 text-sm text-muted">
@@ -72,18 +72,18 @@ export default function ConversationPage() {
           {data.urgentReason === "default_model" && " · дефолт модели — человек в контуре"}
           {data.urgentReason === "ai_error" && " · сбой модели"}
         </p>
-        {data.aiError && <p className="mt-3 rounded-xl bg-orange-50 p-3 text-sm text-urgent">{data.aiError}</p>}
+        {data.aiError && <p className="mt-3 rounded border border-urgent/40 bg-urgent/15 p-3 text-sm">{data.aiError}</p>}
         <ol className="mt-6 space-y-3">
           {data.messages.map((m) => (
             <li
               key={m.id}
-              className={`max-w-xl rounded-2xl px-4 py-3 text-sm ${
+              className={`max-w-xl rounded-lg px-4 py-3 text-sm ${
                 m.direction === "inbound"
                   ? "bg-slot"
                   : m.direction === "draft"
-                    ? "border border-dashed border-pine bg-white"
+                    ? "border border-dashed border-pine bg-paper"
                     : m.direction === "system"
-                      ? "bg-orange-50 text-urgent"
+                      ? "border border-urgent/40 bg-urgent/15 text-ink"
                       : "ml-auto bg-ink text-paper"
               }`}
             >
@@ -108,9 +108,9 @@ export default function ConversationPage() {
           {msg && <p className="text-sm text-pine">{msg}</p>}
         </form>
       </section>
-      <aside className="border-t border-line bg-[#efe8db]/60 p-6 lg:border-l lg:border-t-0">
+      <aside className="border-t border-line bg-[#0e1116] p-6 lg:border-l lg:border-t-0">
         <p className="text-xs uppercase tracking-widest text-muted">Контакт</p>
-        <Link className="mt-2 block font-serif text-2xl text-pine underline" href={`/contacts/${data.contact.id}`}>
+        <Link className="mt-2 block text-xl font-semibold text-pine underline" href={`/contacts/${data.contact.id}`}>
           Открыть карточку
         </Link>
         <p className="mt-2 text-sm">{data.contact.phone || "нет телефона"}</p>

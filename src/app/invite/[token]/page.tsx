@@ -38,7 +38,7 @@ export default function InvitePage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <h1 className="font-serif text-4xl">Приглашение</h1>
+      <h1 className="text-3xl font-semibold">Приглашение</h1>
       <p className="mt-2 text-muted">{workspaceName ? `Воркспейс «${workspaceName}», роль менеджер` : "…"}</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <input className="w-full rounded-xl border border-line bg-slot px-3 py-2" placeholder="Имя" value={name} onChange={(e) => setName(e.target.value)} required />

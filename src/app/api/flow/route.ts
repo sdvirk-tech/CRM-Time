@@ -54,6 +54,7 @@ export async function GET() {
       models: listModels(),
       deepAnalysisEnabled: deepAnalysisEnabled(),
       role: session.role,
+      defaultModel: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.defaultModel ?? null,
     });
   });
 }

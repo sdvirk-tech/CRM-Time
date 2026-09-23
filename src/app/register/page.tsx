@@ -17,7 +17,7 @@ export default function RegisterPage() {
   if (blocked) {
     return (
       <main className="mx-auto max-w-md px-6 py-24">
-        <h1 className="font-serif text-3xl">Регистрация выключена</h1>
+        <h1 className="text-3xl font-semibold">Регистрация выключена</h1>
         <p className="mt-3 text-muted">DEPLOY_MODE=box — войдите или примите приглашение.</p>
         <Link className="mt-6 inline-block text-pine underline" href="/login">
           Ко входу
@@ -29,7 +29,7 @@ export default function RegisterPage() {
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
       <p className="text-sm uppercase tracking-[0.2em] text-pine">CRM-Time</p>
-      <h1 className="mt-3 font-serif text-4xl">Собрать воркспейс</h1>
+      <h1 className="mt-3 text-3xl font-semibold">Собрать воркспейс</h1>
       <form method="POST" action="/api/auth/register/form" className="mt-8 space-y-4">
         <label className="block text-sm">
           Ваше имя

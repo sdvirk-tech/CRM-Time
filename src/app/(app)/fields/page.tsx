@@ -40,7 +40,7 @@ export default function FieldsPage() {
 
   return (
     <main className="p-8">
-      <h1 className="font-serif text-4xl">Поля клиента (ТТХ)</h1>
+      <h1 className="text-3xl font-semibold">Поля клиента (ТТХ)</h1>
       <p className="mt-2 max-w-xl text-muted">Валидаторы ВЭД: телефон, ТН ВЭД (10 цифр, глава 01–97 кроме 77), Incoterms, контейнер.</p>
       <ul className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-slot">
         {fields.map((f) => (

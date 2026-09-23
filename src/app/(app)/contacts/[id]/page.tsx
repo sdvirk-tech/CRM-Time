@@ -28,11 +28,11 @@ export default function ContactPage() {
 
   return (
     <main className="p-8">
-      <h1 className="font-serif text-4xl">{contact.name}</h1>
+      <h1 className="text-3xl font-semibold">{contact.name}</h1>
       <p className="mt-2 text-muted">{contact.phone || "телефон не указан"}</p>
       <p className="mt-4 max-w-xl text-sm">{contact.comment}</p>
       <section className="mt-8">
-        <h2 className="font-serif text-2xl">Каналы</h2>
+        <h2 className="text-xl font-semibold">Каналы</h2>
         <ul className="mt-2 text-sm">
           {contact.channels.map((c) => (
             <li key={c.externalId}>
@@ -42,7 +42,7 @@ export default function ContactPage() {
         </ul>
       </section>
       <section className="mt-8">
-        <h2 className="font-serif text-2xl">Поля</h2>
+        <h2 className="text-xl font-semibold">Поля</h2>
         <ul className="mt-2 text-sm">
           {contact.fieldValues.map((v) => (
             <li key={v.id}>
@@ -52,7 +52,7 @@ export default function ContactPage() {
         </ul>
       </section>
       <section className="mt-8">
-        <h2 className="font-serif text-2xl">Лиды</h2>
+        <h2 className="text-xl font-semibold">Лиды</h2>
         <ul className="mt-2 space-y-1">
           {contact.leads.map((l) => (
             <li key={l.id}>
@@ -65,7 +65,7 @@ export default function ContactPage() {
         </ul>
       </section>
       <section className="mt-8">
-        <h2 className="font-serif text-2xl">Переписка</h2>
+        <h2 className="text-xl font-semibold">Переписка</h2>
         <ul className="mt-2">
           {contact.conversations.map((c) => (
             <li key={c.id}>

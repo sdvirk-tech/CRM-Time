@@ -1,21 +1,27 @@
 import type { Config } from "tailwindcss";
 
+const calibri = ["Calibri", "Carlito", "Segoe UI", "sans-serif"];
+
 const config: Config = {
   content: ["./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        paper: "#f3eee4",
-        ink: "#1c1915",
-        muted: "#6b6258",
-        line: "#d9d0c3",
-        slot: "#fffdf8",
-        pine: "#1f6f5b",
-        urgent: "#c2410c",
+        paper: "#12151a",
+        ink: "#e8edf2",
+        muted: "#8b949e",
+        line: "#2a313a",
+        slot: "#1a1f26",
+        pine: "#6ea0ff",
+        urgent: "#be123c",
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui"],
-        serif: ["var(--font-serif)", "ui-serif", "Georgia"],
+        sans: calibri,
+        serif: calibri,
+      },
+      borderRadius: {
+        xl: "6px",
+        "2xl": "8px",
       },
     },
   },
