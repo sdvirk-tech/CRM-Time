@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --paper: #f3eee4;
+  --ink: #1c1915;
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+  min-height: 100%;
+}
+
+body {
+  background-image:
+    radial-gradient(ellipse at top left, rgba(31, 111, 91, 0.08), transparent 42%),
+    radial-gradient(ellipse at bottom right, rgba(194, 65, 12, 0.06), transparent 36%);
+}
+
+input,
+textarea,
+select,
+button {
+  font: inherit;
+}
+
+.slot-card {
+  min-width: 220px;
+  background: #fffdf8;
+  border: 1px solid #d9d0c3;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(28, 25, 21, 0.06);
+}
+
+.urgent-badge {
+  background: #c2410c;
+  color: #fff7ed;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 700;
+}

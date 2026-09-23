@@ -1,0 +1,128 @@
+"use client";
+
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { FormEvent, useEffect, useState } from "react";
+
+type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
+type Data = {
+  id: string;
+  urgent: boolean;
+  urgentReason: string | null;
+  aiError: string | null;
+  contact: { id: string; name: string; phone: string | null; leads: { id: string }[] };
+  channel: { type: string; name: string };
+  messages: Msg[];
+};
+
+export default function ConversationPage() {
+  const params = useParams<{ id: string }>();
+  const [data, setData] = useState<Data | null>(null);
+  const [text, setText] = useState("");
+  const [msg, setMsg] = useState("");
+
+  async function load() {
+    const res = await fetch(`/api/conversations/${params.id}`);
+    const json = await res.json();
+    setData(json);
+    const draft = [...(json.messages ?? [])].reverse().find((m: Msg) => m.direction === "draft");
+    if (draft) setText(draft.body);
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
+
+  async function send(e: FormEvent, sendOut: boolean) {
+    e.preventDefault();
+    const res = await fetch(`/api/conversations/${params.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, send: sendOut }),
+    });
+    const json = await res.json();
+    if (!res.ok) setMsg(json.error);
+    else {
+      setMsg(sendOut ? "Отправлено" : "Черновик сохранён");
+      await load();
+    }
+  }
+
+  async function createLead() {
+    const res = await fetch(`/api/conversations/${params.id}/create-lead`, { method: "POST" });
+    const json = await res.json();
+    if (res.ok) setMsg("Лид в очереди");
+    else setMsg(json.error);
+    await load();
+  }
+
+  if (!data?.id) return <div className="p-8 text-muted">Загрузка…</div>;
+  const draft = [...data.messages].reverse().find((m) => m.direction === "draft");
+
+  return (
+    <main className="grid min-h-screen lg:grid-cols-[1fr_280px]">
+      <section className="p-8">
+        <div className="flex items-center gap-3">
+          <h1 className="font-serif text-4xl">{data.contact.name}</h1>
+          {data.urgent && <span className="urgent-badge">срочно</span>}
+        </div>
+        <p className="mt-1 text-sm text-muted">
+          {data.channel.type === "web_form" ? "сайт" : "Telegram"}
+          {data.urgentReason === "default_model" && " · дефолт модели — человек в контуре"}
+          {data.urgentReason === "ai_error" && " · сбой модели"}
+        </p>
+        {data.aiError && <p className="mt-3 rounded-xl bg-orange-50 p-3 text-sm text-urgent">{data.aiError}</p>}
+        <ol className="mt-6 space-y-3">
+          {data.messages.map((m) => (
+            <li
+              key={m.id}
+              className={`max-w-xl rounded-2xl px-4 py-3 text-sm ${
+                m.direction === "inbound"
+                  ? "bg-slot"
+                  : m.direction === "draft"
+                    ? "border border-dashed border-pine bg-white"
+                    : m.direction === "system"
+                      ? "bg-orange-50 text-urgent"
+                      : "ml-auto bg-ink text-paper"
+              }`}
+            >
+              <p className="text-[10px] uppercase tracking-wider opacity-70">
+                {m.direction === "inbound" ? "клиент" : m.direction === "draft" ? "черновик" : m.direction === "system" ? "ошибка" : "вы"}
+              </p>
+              <p className="mt-1 whitespace-pre-wrap">{m.body}</p>
+            </li>
+          ))}
+        </ol>
+        <form className="mt-8 space-y-3">
+          <textarea className="w-full rounded-2xl border border-line bg-slot p-3" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ответ клиенту…" />
+          <div className="flex flex-wrap gap-2">
+            <button onClick={(e) => send(e, false)} className="rounded-xl border border-line px-4 py-2">
+              Сохранить черновик
+            </button>
+            <button onClick={(e) => send(e, true)} className="rounded-xl bg-ink px-4 py-2 text-paper">
+              Отправить
+            </button>
+          </div>
+          {draft && <p className="text-xs text-muted">Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить».</p>}
+          {msg && <p className="text-sm text-pine">{msg}</p>}
+        </form>
+      </section>
+      <aside className="border-t border-line bg-[#efe8db]/60 p-6 lg:border-l lg:border-t-0">
+        <p className="text-xs uppercase tracking-widest text-muted">Контакт</p>
+        <Link className="mt-2 block font-serif text-2xl text-pine underline" href={`/contacts/${data.contact.id}`}>
+          Открыть карточку
+        </Link>
+        <p className="mt-2 text-sm">{data.contact.phone || "нет телефона"}</p>
+        <button onClick={createLead} className="mt-6 w-full rounded-xl bg-pine px-4 py-2 text-paper">
+          Создать лид
+        </button>
+        {data.contact.leads[0] && (
+          <Link className="mt-3 block text-sm underline" href={`/leads/${data.contact.leads[0].id}`}>
+            К лиду
+          </Link>
+        )}
+      </aside>
+    </main>
+  );
+}
