@@ -7,6 +7,15 @@ export const VED_TEMPLATE = [
   { name: "Контейнер", key: "container", fieldType: "container", required: false },
 ];
 
+export const VED_KNOWLEDGE = {
+  title: "Ориентир ТН ВЭД и поставка Китай → РФ",
+  body: `Клиенту даём ориентир, не декларацию и не бронь судна.
+Код ТН ВЭД — 10 цифр, глава 01–97 кроме 77. Спорный код, антидемпинг, «оптимизируйте любой ценой» — сразу к менеджеру.
+Incoterms (часто FCA): продавец отдаёт товар перевозчику, дальше риск и логистика на покупателе.
+Пошлина и НДС — оценка по коду и базе знаний, не счёт к оплате.
+После ориентира просим контакт и передаём менеджеру, чтобы закрыть поставку.`,
+};
+
 export async function ensureWorkspaceFlow(workspaceId: string) {
   const existing = await prisma.flow.findFirst({ where: { workspaceId } });
   if (existing) return existing;
@@ -21,6 +30,14 @@ export async function applyVedTemplate(workspaceId: string) {
       where: { workspaceId_key: { workspaceId, key: f.key } },
       update: {},
       create: { workspaceId, ...f },
+    });
+  }
+  const existing = await prisma.knowledgeArticle.findFirst({
+    where: { workspaceId, title: VED_KNOWLEDGE.title },
+  });
+  if (!existing) {
+    await prisma.knowledgeArticle.create({
+      data: { workspaceId, title: VED_KNOWLEDGE.title, body: VED_KNOWLEDGE.body },
     });
   }
 }

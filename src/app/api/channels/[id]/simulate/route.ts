@@ -20,6 +20,7 @@ export async function POST(req: Request, ctx: Ctx) {
         text: z.string().min(1),
         username: z.string().optional(),
         name: z.string().optional(),
+        eventKey: z.string().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Нужны chatId и text");
@@ -31,6 +32,7 @@ export async function POST(req: Request, ctx: Ctx) {
       username: parsed.data.username,
       name: parsed.data.name,
       body: parsed.data.text,
+      eventKey: parsed.data.eventKey,
     });
     return NextResponse.json({ ok: true, ...result });
   });

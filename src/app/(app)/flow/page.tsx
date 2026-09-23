@@ -55,6 +55,7 @@ export default function FlowPage() {
     deepAnalysisEnabled: boolean;
     role: string;
     defaultModel: string | null;
+    greeting: string;
   } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -93,6 +94,15 @@ export default function FlowPage() {
     await load();
   }
 
+  async function saveGreeting(value: string) {
+    await fetch("/api/workspace", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ greeting: value }),
+    });
+    await load();
+  }
+
   const preview = useMemo(() => {
     if (!data?.blocks.length) return "положите канал";
     return data.blocks
@@ -113,7 +123,7 @@ export default function FlowPage() {
 
   return (
     <div className="flex min-h-screen">
-      <aside className="w-56 shrink-0 border-r border-line bg-[#0e1116] p-4">
+      <aside className="w-56 shrink-0 border-r border-line bg-mist p-4">
         <p className="text-xs uppercase tracking-widest text-muted">Палитра</p>
         <div className="mt-3 space-y-2">
           {palette.map((p) => {
@@ -145,7 +155,7 @@ export default function FlowPage() {
 
         {tab === "chain" && (
           <>
-            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-pine">Цепочка</p>
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-ink">Цепочка</p>
             <h1 className="mt-2 text-3xl font-semibold">Куда класть и как соединять</h1>
             <p className="mt-2 max-w-2xl text-muted">
               Слоты только по порядку, без веток. Превью: <span className="text-ink">{preview}</span>
@@ -163,7 +173,7 @@ export default function FlowPage() {
                     {i > 0 && <span className="text-2xl text-muted">→</span>}
                     <button
                       onClick={() => setOpenId(block.id)}
-                      className={`slot-card px-4 py-4 text-left ${emptyModel ? "ring-1 ring-urgent" : ""}`}
+                      className={`slot-card px-4 py-4 text-left ${emptyModel ? "ring-1 ring-urgent" : ""} ${openId === block.id ? "slot-on" : ""}`}
                     >
                       <p className="text-[10px] uppercase tracking-wider text-muted">
                         {block.type === "channel" ? "Канал" : block.type === "ai_process" ? "AI-процесс" : "Действие"}
@@ -171,7 +181,7 @@ export default function FlowPage() {
                       <p className="text-lg font-semibold">{block.label}</p>
                       {emptyModel && <p className="mt-2 text-xs font-semibold text-urgent">срочно человек</p>}
                       {proc?.binding && (
-                        <p className="mt-2 text-xs text-pine">
+                        <p className="mt-2 text-xs text-ink">
                           {proc.binding.provider}:{proc.binding.model}
                         </p>
                       )}
@@ -192,6 +202,19 @@ export default function FlowPage() {
             </p>
             {owner && (
               <label className="mt-6 block text-sm">
+                Приветствие на /start (сброс сессии в Telegram)
+                <textarea
+                  className="mt-1 w-full rounded border border-line bg-slot px-3 py-2"
+                  rows={3}
+                  defaultValue={data.greeting}
+                  onBlur={(e) => {
+                    if (e.target.value !== data.greeting) saveGreeting(e.target.value);
+                  }}
+                />
+              </label>
+            )}
+            {owner && (
+              <label className="mt-6 block text-sm">
                 Дефолт воркспейса (запасной ключ, не автопилот)
                 <select
                   className="mt-1 w-full rounded border border-line bg-slot px-3 py-2"
@@ -209,7 +232,7 @@ export default function FlowPage() {
             )}
             <table className="mt-6 w-full border-collapse text-sm">
               <thead>
-                <tr className="border-b border-line text-left text-muted">
+                <tr className="border-b border-line bg-mist text-left text-ink">
                   <th className="py-2 font-medium">Процесс</th>
                   <th className="py-2 font-medium">Модель</th>
                   <th className="py-2 font-medium">Режим</th>
@@ -342,8 +365,8 @@ function Sheet({
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex justify-end bg-black/70">
-      <div className="h-full w-full max-w-md overflow-auto border-l border-line bg-slot p-6">
+    <div className="fixed inset-0 z-20 flex justify-end bg-ink/40">
+      <div className="h-full w-full max-w-md overflow-auto border-l border-accent bg-paper p-6">
         <div className="flex items-start justify-between gap-4">
           <h2 className="text-2xl font-semibold">{block.label}</h2>
           <button onClick={onClose} className="text-sm text-muted">
@@ -358,7 +381,7 @@ function Sheet({
             </p>
             <p>
               Тестовая страница:{" "}
-              <a className="text-pine underline" href={channel.formUrl} target="_blank">
+              <a className="link" href={channel.formUrl} target="_blank">
                 {channel.formUrl}
               </a>
             </p>
@@ -436,11 +459,14 @@ function Sheet({
         )}
 
         {block.lastError && <p className="mt-4 text-sm text-urgent">Ошибка слота: {block.lastError}</p>}
-        {msg && <p className="mt-4 text-sm text-pine">{msg}</p>}
+        {msg && /ок|сохран|скопир|ушла|сообщение/i.test(msg) && (
+          <p className="ok-banner mt-4 rounded px-3 py-2 text-sm">{msg}</p>
+        )}
+        {msg && !/ок|сохран|скопир|ушла|сообщение/i.test(msg) && <p className="mt-4 text-sm text-urgent">{msg}</p>}
 
         {owner && (
           <div className="mt-8 flex flex-wrap gap-2">
-            <button onClick={() => save()} className="rounded bg-ink px-4 py-2 text-paper">
+            <button onClick={() => save()} className="rounded bg-accent px-4 py-2 text-ink">
               Сохранить
             </button>
             {channel && (

@@ -19,7 +19,7 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
-      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-pine">CRM-Time</p>
+      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-ink">CRM-Time</p>
       <h1 className="mt-3 text-3xl font-semibold">Вход</h1>
       <p className="mt-2 text-muted">Канал → AI → действие. Входящие и лиды рядом.</p>
       <form method="POST" action="/api/auth/login/form" className="mt-8 space-y-4">
@@ -31,14 +31,14 @@ export default function LoginPage() {
           Пароль
           <input className="mt-1 w-full rounded border border-line bg-slot px-3 py-2" name="password" type="password" required />
         </label>
-        <button type="submit" className="w-full rounded bg-ink px-4 py-2.5 text-paper">
+        <button type="submit" className="w-full rounded bg-accent px-4 py-2.5 text-ink">
           Войти
         </button>
       </form>
       {!box && (
         <p className="mt-6 text-sm text-muted">
           Нет воркспейса?{" "}
-          <Link className="text-pine underline" href="/register">
+          <Link className="link" href="/register">
             Регистрация
           </Link>
         </p>

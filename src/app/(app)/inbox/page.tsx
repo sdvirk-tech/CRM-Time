@@ -43,7 +43,7 @@ export default function InboxPage() {
 
   return (
     <main className="p-8">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pine">Рабочий стол</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink">Рабочий стол</p>
       <h1 className="mt-2 text-3xl font-semibold">Входящие</h1>
       <p className="mt-2 text-muted">Без ответа: {unread}</p>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -58,15 +58,15 @@ export default function InboxPage() {
           </button>
         ))}
       </div>
-      <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-line bg-slot">
+      <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-accent bg-mist">
         {visible.length === 0 && <li className="p-6 text-muted">Нет заявок в этом фильтре.</li>}
         {visible.map((item) => (
           <li key={item.id}>
-            <Link href={`/inbox/${item.id}`} className="flex items-start justify-between gap-4 p-4 hover:bg-white/5">
+            <Link href={`/inbox/${item.id}`} className="flex items-start justify-between gap-4 p-4 hover:bg-mist">
               <div>
                 <p className="font-medium">
                   {item.contact.name}
-                  {item.unread && <span className="ml-2 text-xs text-pine">новое</span>}
+                  {item.unread && <span className="ml-2 text-xs font-semibold">новое</span>}
                 </p>
                 <p className="mt-1 line-clamp-2 text-sm text-muted">{item.lastMessage}</p>
               </div>

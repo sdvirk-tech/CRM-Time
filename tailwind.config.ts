@@ -7,13 +7,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        paper: "#12151a",
-        ink: "#e8edf2",
-        muted: "#8b949e",
-        line: "#2a313a",
-        slot: "#1a1f26",
-        pine: "#6ea0ff",
+        paper: "#F2F2F2",
+        accent: "#99CCFF",
+        mist: "#C5E2FF",
+        ok: "#DAF2D0",
+        ink: "#1a1a1a",
         urgent: "#be123c",
+        muted: "color-mix(in srgb, #1a1a1a 58%, #F2F2F2)",
+        line: "color-mix(in srgb, #1a1a1a 16%, #F2F2F2)",
+        slot: "#F2F2F2",
+        pine: "#99CCFF",
       },
       fontFamily: {
         sans: calibri,

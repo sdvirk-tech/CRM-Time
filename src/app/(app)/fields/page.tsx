@@ -71,7 +71,7 @@ export default function FieldsPage() {
           Обязательное
         </label>
         {error && <p className="text-sm text-urgent">{error}</p>}
-        <button className="w-fit rounded-xl bg-ink px-4 py-2 text-paper">Добавить</button>
+        <button className="w-fit rounded-xl bg-accent px-4 py-2 text-ink">Добавить</button>
       </form>
     </main>
   );

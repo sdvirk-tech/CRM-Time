@@ -47,9 +47,9 @@ export default function TeamPage() {
       </ul>
       <form onSubmit={invite} className="mt-8 flex max-w-lg gap-2">
         <input className="flex-1 rounded-xl border border-line bg-slot px-3 py-2" placeholder="почта менеджера (необязательно)" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <button className="rounded-xl bg-ink px-4 py-2 text-paper">Пригласить</button>
+        <button className="rounded-xl bg-accent px-4 py-2 text-ink">Пригласить</button>
       </form>
-      {msg && <p className="mt-3 break-all text-sm text-pine">{msg}</p>}
+      {msg && <p className="ok-banner mt-3 break-all rounded px-3 py-2 text-sm">{msg}</p>}
       <ul className="mt-4 space-y-1 text-sm">
         {invites.map((i) => (
           <li key={i.id} className="break-all">

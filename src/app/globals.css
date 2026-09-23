@@ -3,21 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --paper: #12151a;
-  --ink: #e8edf2;
-  color-scheme: dark;
+  --paper: #f2f2f2;
+  --accent: #99ccff;
+  --mist: #c5e2ff;
+  --ok: #daf2d0;
+  --ink: #1a1a1a;
+  --urgent: #be123c;
+  --muted: color-mix(in srgb, #1a1a1a 58%, #f2f2f2);
+  --line: color-mix(in srgb, #1a1a1a 16%, #f2f2f2);
+  color-scheme: light;
 }
 
 html,
 body {
-  background: #12151a;
-  color: #e8edf2;
+  background: var(--paper);
+  color: var(--ink);
   min-height: 100%;
 }
 
 body {
-  background-image:
-    linear-gradient(180deg, #0e1116 0%, #161a20 42%, #12151a 100%);
   font-family: Calibri, Carlito, "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 1.45;
@@ -33,19 +37,40 @@ button {
 input,
 textarea,
 select {
-  color: #e8edf2;
-  background: #1a1f26;
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--accent);
+}
+
+input:focus,
+textarea:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+a.link,
+.link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 3px;
 }
 
 .slot-card {
   min-width: 220px;
-  background: #1a1f26;
-  border: 1px solid #2a313a;
+  background: var(--paper);
+  border: 1px solid var(--accent);
   border-radius: 6px;
 }
 
+.slot-card.slot-on {
+  background: var(--mist);
+}
+
 .urgent-badge {
-  background: #be123c;
+  background: var(--urgent);
   color: #fff;
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -56,15 +81,21 @@ select {
 }
 
 .chip {
-  border: 1px solid #2a313a;
-  background: transparent;
+  border: 1px solid var(--accent);
+  background: var(--paper);
+  color: var(--ink);
   padding: 4px 10px;
   font-size: 13px;
   border-radius: 4px;
 }
 
 .chip-on {
-  border-color: #6ea0ff;
-  color: #6ea0ff;
-  background: rgba(110, 160, 255, 0.1);
+  border-color: var(--accent);
+  color: var(--ink);
+  background: var(--mist);
+}
+
+.ok-banner {
+  background: var(--ok);
+  color: var(--ink);
 }

@@ -56,7 +56,7 @@ export default function ContactPage() {
         <ul className="mt-2 space-y-1">
           {contact.leads.map((l) => (
             <li key={l.id}>
-              <Link className="text-pine underline" href={`/leads/${l.id}`}>
+              <Link className="link" href={`/leads/${l.id}`}>
                 {l.status}
                 {l.urgent ? " · срочно" : ""}
               </Link>
@@ -69,7 +69,7 @@ export default function ContactPage() {
         <ul className="mt-2">
           {contact.conversations.map((c) => (
             <li key={c.id}>
-              <Link className="text-pine underline" href={`/inbox/${c.id}`}>
+              <Link className="link" href={`/inbox/${c.id}`}>
                 Открыть диалог ({c.channel.type})
               </Link>
             </li>

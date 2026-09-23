@@ -198,6 +198,70 @@ async function main() {
   const draft = convTg.data.messages.find((m) => m.direction === "draft");
   assert(draft, "draft exists and is not sent");
   assert(!convTg.data.messages.some((m) => m.direction === "outbound"), "draft not auto-sent");
+  assert(!String(draft.body).includes("<think>"), "think tags stripped from draft");
+  assert(String(draft.body).includes("По методике"), "knowledge stuffed into draft prompt");
+
+  r = await req("/api/knowledge", { cookie });
+  assert(r.status === 200 && (r.data.articles || []).length >= 1, "ved knowledge seeded");
+  r = await req("/api/knowledge", {
+    method: "POST",
+    cookie,
+    json: { title: "FCA", body: "FCA — покупатель забирает у продавца, дальше его риск." },
+  });
+  assert(r.status === 200 && r.data.article.id, "add knowledge article");
+
+  const leadsBeforeStart = (await req("/api/leads", { cookie })).data.items.length;
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: "tg-start-" + id, text: "/start", name: "Старт" },
+  });
+  assert(r.status === 200 && r.data.start === true, "telegram /start " + JSON.stringify(r.data));
+  assert(!r.data.leadId, "/start does not create lead");
+  const leadsAfterStart = (await req("/api/leads", { cookie })).data.items.length;
+  assert(leadsAfterStart === leadsBeforeStart, "/start does not add a lead");
+  const convStart = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  assert(
+    convStart.data.messages.some((m) => m.direction === "system" && /сброшена/i.test(m.body)),
+    "session reset system message",
+  );
+  assert(
+    convStart.data.messages.some((m) => m.direction === "outbound" && /Здравствуйте/i.test(m.body)),
+    "greeting on /start",
+  );
+
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: "tg-hand-" + id, text: "хочу менеджера", name: "Ханд" },
+  });
+  assert(r.status === 200 && r.data.urgent === true, "handoff is urgent");
+  assert(r.data.leadId, "handoff creates lead");
+  const convHand = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  assert(convHand.data.urgentReason === "handoff", "handoff reason");
+
+  r = await req(`/api/ingest/telegram/${tgCh.publicKey}`, {
+    method: "POST",
+    json: {
+      update_id: 91001,
+      message: { chat: { id: 77001 }, from: { first_name: "Дуп" }, text: "один раз" },
+    },
+  });
+  assert(r.status === 200, "telegram webhook first");
+  r = await req(`/api/ingest/telegram/${tgCh.publicKey}`, {
+    method: "POST",
+    json: {
+      update_id: 91001,
+      message: { chat: { id: 77001 }, from: { first_name: "Дуп" }, text: "один раз" },
+    },
+  });
+  assert(r.status === 200 && r.data.duplicate === true, "telegram update_id dedup");
+  const inboxDup = await req("/api/inbox", { cookie });
+  const dupItem = inboxDup.data.items.find((i) => i.contact.name === "Дуп");
+  assert(dupItem, "dedup conversation in inbox");
+  const convDup = await req(`/api/conversations/${dupItem.id}`, { cookie });
+  const inboundDup = convDup.data.messages.filter((m) => m.direction === "inbound");
+  assert(inboundDup.length === 1, "duplicate webhook does not add a second inbound");
 
   r = await req(`/api/conversations/${tgItem.id}/create-lead`, { method: "POST", cookie });
   assert(r.status === 200 && r.data.lead, "telegram create lead button");
@@ -218,6 +282,10 @@ async function main() {
   const mgrCookie = r.cookie;
   r = await req("/api/flow/blocks", { method: "POST", cookie: mgrCookie, json: { kind: "ai_parse" } });
   assert(r.status === 403, "manager cannot edit flow");
+  r = await req("/api/knowledge", { method: "POST", cookie: mgrCookie, json: { title: "x", body: "yy" } });
+  assert(r.status === 403, "manager cannot edit knowledge");
+  r = await req("/api/knowledge", { cookie: mgrCookie });
+  assert(r.status === 200, "manager can read knowledge");
   r = await req("/api/inbox", { cookie: mgrCookie });
   assert(r.status === 200, "manager inbox");
   r = await req("/api/leads", { cookie: mgrCookie });

@@ -44,7 +44,7 @@ export default function PublicFormPage() {
 
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <p className="text-xs uppercase tracking-[0.2em] text-pine">CRM-Time</p>
+      <p className="text-xs uppercase tracking-[0.2em] text-ink">CRM-Time</p>
       <h1 className="mt-2 text-3xl font-semibold">Оставить заявку</h1>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <input name="name" required placeholder="Имя" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
@@ -58,9 +58,10 @@ export default function PublicFormPage() {
           </label>
         ))}
         <textarea name="comment" placeholder="Комментарий" className="w-full rounded-xl border border-line bg-slot px-3 py-2" rows={4} />
-        <button className="w-full rounded-xl bg-ink px-4 py-2 text-paper">Отправить</button>
+        <button className="w-full rounded-xl bg-accent px-4 py-2 text-ink">Отправить</button>
       </form>
-      {status && <p className="mt-4 text-sm">{status}</p>}
+      {status === "Заявка принята" && <p className="ok-banner mt-4 rounded px-3 py-2 text-sm">{status}</p>}
+      {status && status !== "Заявка принята" && <p className="mt-4 text-sm text-urgent">{status}</p>}
     </main>
   );
 }

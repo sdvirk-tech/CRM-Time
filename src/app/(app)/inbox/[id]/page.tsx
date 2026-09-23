@@ -71,6 +71,7 @@ export default function ConversationPage() {
           {data.channel.type === "web_form" ? "сайт" : "Telegram"}
           {data.urgentReason === "default_model" && " · дефолт модели — человек в контуре"}
           {data.urgentReason === "ai_error" && " · сбой модели"}
+          {data.urgentReason === "handoff" && " · клиент просит человека"}
         </p>
         {data.aiError && <p className="mt-3 rounded border border-urgent/40 bg-urgent/15 p-3 text-sm">{data.aiError}</p>}
         <ol className="mt-6 space-y-3">
@@ -79,16 +80,26 @@ export default function ConversationPage() {
               key={m.id}
               className={`max-w-xl rounded-lg px-4 py-3 text-sm ${
                 m.direction === "inbound"
-                  ? "bg-slot"
+                  ? "bg-mist"
                   : m.direction === "draft"
-                    ? "border border-dashed border-pine bg-paper"
+                    ? "border border-dashed border-accent bg-paper"
                     : m.direction === "system"
-                      ? "border border-urgent/40 bg-urgent/15 text-ink"
-                      : "ml-auto bg-ink text-paper"
+                      ? m.aiError
+                        ? "border border-urgent/40 bg-urgent/15 text-ink"
+                        : "bg-slot text-muted"
+                      : "ml-auto bg-accent text-ink"
               }`}
             >
               <p className="text-[10px] uppercase tracking-wider opacity-70">
-                {m.direction === "inbound" ? "клиент" : m.direction === "draft" ? "черновик" : m.direction === "system" ? "ошибка" : "вы"}
+                {m.direction === "inbound"
+                  ? "клиент"
+                  : m.direction === "draft"
+                    ? "черновик"
+                    : m.direction === "system"
+                      ? m.aiError
+                        ? "ошибка"
+                        : "система"
+                      : "вы"}
               </p>
               <p className="mt-1 whitespace-pre-wrap">{m.body}</p>
             </li>
@@ -100,21 +111,21 @@ export default function ConversationPage() {
             <button onClick={(e) => send(e, false)} className="rounded-xl border border-line px-4 py-2">
               Сохранить черновик
             </button>
-            <button onClick={(e) => send(e, true)} className="rounded-xl bg-ink px-4 py-2 text-paper">
+            <button onClick={(e) => send(e, true)} className="rounded-xl bg-accent px-4 py-2 text-ink">
               Отправить
             </button>
           </div>
           {draft && <p className="text-xs text-muted">Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить».</p>}
-          {msg && <p className="text-sm text-pine">{msg}</p>}
+          {msg && <p className="ok-banner mt-2 inline-block rounded px-2 py-1 text-sm">{msg}</p>}
         </form>
       </section>
-      <aside className="border-t border-line bg-[#0e1116] p-6 lg:border-l lg:border-t-0">
+      <aside className="border-t border-line bg-mist p-6 lg:border-l lg:border-t-0">
         <p className="text-xs uppercase tracking-widest text-muted">Контакт</p>
-        <Link className="mt-2 block text-xl font-semibold text-pine underline" href={`/contacts/${data.contact.id}`}>
+        <Link className="mt-2 block text-xl font-semibold link" href={`/contacts/${data.contact.id}`}>
           Открыть карточку
         </Link>
         <p className="mt-2 text-sm">{data.contact.phone || "нет телефона"}</p>
-        <button onClick={createLead} className="mt-6 w-full rounded-xl bg-pine px-4 py-2 text-paper">
+        <button onClick={createLead} className="mt-6 w-full rounded-xl bg-accent px-4 py-2 text-ink">
           Создать лид
         </button>
         {data.contact.leads[0] && (

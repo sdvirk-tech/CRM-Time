@@ -1,4 +1,5 @@
 import { env } from "./env";
+import { sanitizeModelText } from "./dialog";
 
 export type ModelOption = {
   provider: string;
@@ -122,7 +123,7 @@ async function completeOpenAiCompatible(opts: {
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   const content = data.choices?.[0]?.message?.content;
   if (!content) throw new Error("Пустой ответ модели");
-  return content;
+  return sanitizeModelText(content);
 }
 
 export async function runModel(opts: {
@@ -134,14 +135,19 @@ export async function runModel(opts: {
   if (opts.provider === "mock") {
     if (opts.model === "fail") throw new Error("Искусственный сбой модели (mock:fail)");
     if (opts.system.includes("JSON")) {
-      return JSON.stringify({
-        name: "из текста",
-        phone: null,
-        summary: opts.user.slice(0, 180),
-        fields: {},
-      });
+      return sanitizeModelText(
+        JSON.stringify({
+          name: "из текста",
+          phone: null,
+          summary: opts.user.slice(0, 180),
+          fields: {},
+        }),
+      );
     }
-    return `Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`;
+    const byBook = opts.system.includes("--- знания ---") ? "По методике. " : "";
+    return sanitizeModelText(
+      `<think>не клиенту</think>${byBook}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
+    );
   }
 
   const def = PROVIDERS.find((p) => p.id === opts.provider);

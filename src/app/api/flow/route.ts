@@ -55,18 +55,20 @@ export async function GET() {
       deepAnalysisEnabled: deepAnalysisEnabled(),
       role: session.role,
       defaultModel: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.defaultModel ?? null,
+      greeting: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.greeting ?? "",
     });
   });
 }
 
 function formSnippet(key: string) {
   const url = `${appUrl()}/api/ingest/web-form/${key}`;
-  return `<form action="${url}" method="POST">
-  <input name="name" placeholder="Имя" required>
-  <input name="phone" placeholder="Телефон" required>
-  <input name="tnved" placeholder="ТН ВЭД">
-  <input name="incoterms" placeholder="Incoterms">
-  <textarea name="comment" placeholder="Комментарий"></textarea>
-  <button type="submit">Отправить</button>
+  return `<!-- CRM-Time widget -->
+<form action="${url}" method="POST" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;padding:16px;max-width:420px;border:1px solid #99CCFF">
+  <input name="name" placeholder="Имя" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
+  <input name="phone" placeholder="Телефон" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
+  <input name="tnved" placeholder="ТН ВЭД" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
+  <input name="incoterms" placeholder="Incoterms" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
+  <textarea name="comment" placeholder="Комментарий" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a"></textarea>
+  <button type="submit" style="background:#99CCFF;color:#1a1a1a;border:0;padding:10px 16px;font-family:inherit">Отправить</button>
 </form>`;
 }

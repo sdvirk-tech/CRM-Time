@@ -45,7 +45,7 @@ export default function InvitePage() {
         <input className="w-full rounded-xl border border-line bg-slot px-3 py-2" placeholder="Почта" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <input className="w-full rounded-xl border border-line bg-slot px-3 py-2" placeholder="Пароль" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
         {error && <p className="text-sm text-urgent">{error}</p>}
-        <button className="w-full rounded-xl bg-ink px-4 py-2 text-paper">Присоединиться</button>
+        <button className="w-full rounded-xl bg-accent px-4 py-2 text-ink">Присоединиться</button>
       </form>
     </main>
   );

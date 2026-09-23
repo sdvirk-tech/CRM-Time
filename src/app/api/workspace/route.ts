@@ -13,6 +13,7 @@ export async function GET() {
       name: workspace.name,
       tradeDescription: workspace.tradeDescription,
       defaultModel: workspace.defaultModel,
+      greeting: workspace.greeting,
     });
   });
 }
@@ -25,6 +26,7 @@ export async function PATCH(req: Request) {
         name: z.string().min(2).optional(),
         tradeDescription: z.string().optional(),
         defaultModel: z.string().nullable().optional(),
+        greeting: z.string().max(2000).optional(),
       })
       .safeParse(body);
     if (!parsed.success) return jsonError("Некорректные данные");

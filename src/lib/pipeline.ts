@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import { asConfig } from "./workspace";
 import { parseBinding, runModel } from "./ai";
 import { validateField } from "./validators";
+import { defaultGreeting, isStartCommand, sanitizeModelText, wantsManager } from "./dialog";
 
 export type IngestInput = {
   workspaceId: string;
@@ -13,6 +14,7 @@ export type IngestInput = {
   phone?: string;
   body: string;
   fields?: Record<string, string>;
+  eventKey?: string;
 };
 
 function explicitBinding(provider?: string | null, model?: string | null) {
@@ -39,10 +41,9 @@ async function pickAssignee(workspaceId: string): Promise<string> {
 }
 
 async function markUrgent(opts: {
-  workspaceId: string;
   conversationId: string;
   leadId?: string | null;
-  reason: "default_model" | "ai_error";
+  reason: "default_model" | "ai_error" | "handoff";
   assigneeId: string;
 }) {
   await prisma.conversation.update({
@@ -55,6 +56,12 @@ async function markUrgent(opts: {
       data: { urgent: true, assigneeId: opts.assigneeId },
     });
   }
+}
+
+function withKnowledge(base: string, articles: { title: string; body: string }[]) {
+  if (!articles.length) return base;
+  const block = articles.map((a) => `${a.title}\n${a.body}`).join("\n\n");
+  return `${base}\n\n--- знания ---\n${block}\n--- конец знаний ---\nОпирайся на знания и текст клиента. Не выдумывай цифры, которых нет в статьях. Спорное — к менеджеру.`;
 }
 
 export async function findOrCreateContact(input: IngestInput) {
@@ -102,7 +109,7 @@ export async function findOrCreateContact(input: IngestInput) {
       workspaceId: input.workspaceId,
       name: input.name || input.username || "Без имени",
       phone: input.phone,
-      comment: input.body.slice(0, 500),
+      comment: sanitizeModelText(input.body).slice(0, 500),
     },
   });
   await prisma.contactChannel.create({
@@ -180,7 +187,43 @@ async function upsertFields(
   }
 }
 
+async function sessionHistory(conversationId: string) {
+  const reset = await prisma.message.findFirst({
+    where: { conversationId, direction: "system", body: { startsWith: "Сессия сброшена" } },
+    orderBy: { createdAt: "desc" },
+  });
+  const messages = await prisma.message.findMany({
+    where: {
+      conversationId,
+      direction: { in: ["inbound", "outbound"] },
+      ...(reset ? { createdAt: { gt: reset.createdAt } } : {}),
+    },
+    orderBy: { createdAt: "asc" },
+    take: 12,
+  });
+  return messages
+    .map((m) => `${m.direction === "inbound" ? "клиент" : "мы"}: ${m.body}`)
+    .join("\n");
+}
+
 export async function ingestInbound(input: IngestInput) {
+  if (input.eventKey) {
+    try {
+      await prisma.channelEvent.create({
+        data: {
+          workspaceId: input.workspaceId,
+          channelId: input.channelId,
+          eventKey: input.eventKey,
+        },
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code === "P2002") {
+        return { contactId: null, conversationId: null, leadId: null, urgent: false, duplicate: true };
+      }
+      throw e;
+    }
+  }
+
   const processes = await loadProcesses(input.workspaceId);
   const flow = await prisma.flow.findFirst({
     where: { workspaceId: input.workspaceId },
@@ -190,6 +233,11 @@ export async function ingestInbound(input: IngestInput) {
     flow?.blocks.some((b) => b.type === "action" && asConfig(b.config).actionType === "create_lead"),
   );
   const needsWatch = processes.some((p) => !p.explicit);
+  const handoff = wantsManager(input.body);
+  const articles = await prisma.knowledgeArticle.findMany({
+    where: { workspaceId: input.workspaceId },
+    orderBy: { createdAt: "asc" },
+  });
 
   const contact = await findOrCreateContact(input);
   let conversation = await prisma.conversation.findFirst({
@@ -220,30 +268,82 @@ export async function ingestInbound(input: IngestInput) {
     },
   });
 
+  if (isStartCommand(input.body)) {
+    const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
+    const greeting = ws.greeting?.trim() || defaultGreeting();
+    await prisma.message.create({
+      data: {
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+        direction: "system",
+        body: "Сессия сброшена. Новый заход, старый расчёт не подмешиваем.",
+      },
+    });
+    await prisma.message.create({
+      data: {
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+        direction: "outbound",
+        body: greeting,
+      },
+    });
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { unread: true, urgent: false, urgentReason: null, aiError: null },
+    });
+    return {
+      contactId: contact.id,
+      conversationId: conversation.id,
+      leadId: null,
+      urgent: false,
+      start: true,
+      greeting,
+    };
+  }
+
   let assigneeId: string | null = null;
   if (needsWatch) {
     assigneeId = await pickAssignee(input.workspaceId);
     await markUrgent({
-      workspaceId: input.workspaceId,
       conversationId: conversation.id,
       reason: "default_model",
       assigneeId,
     });
   }
 
+  if (handoff) {
+    assigneeId = assigneeId ?? (await pickAssignee(input.workspaceId));
+    await markUrgent({
+      conversationId: conversation.id,
+      reason: "handoff",
+      assigneeId,
+    });
+    await prisma.message.create({
+      data: {
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+        direction: "system",
+        body: "Клиент просит человека. Диалог в очереди менеджера.",
+      },
+    });
+  }
+
+  const history = await sessionHistory(conversation.id);
   const parse = processes.find((p) => p.type === "parse_inbound");
   let parsed: { name?: string; phone?: string; summary?: string; fields?: Record<string, string> } = {};
   if (parse) {
     const binding = parse.explicit ?? parse.fallback ?? { provider: "mock", model: "ok" };
     try {
-      const system =
+      const system = withKnowledge(
         parse.prompt ||
-        "Ты разбираешь входящую заявку малого бизнеса. Верни JSON {name, phone, summary, fields} без markdown.";
+          "Ты разбираешь входящую заявку малого бизнеса. Верни JSON {name, phone, summary, fields} без markdown.",
+        articles,
+      );
       const text = await runModel({
         provider: binding.provider,
         model: binding.model,
         system,
-        user: input.body,
+        user: history || input.body,
       });
       const jsonStart = text.indexOf("{");
       const jsonEnd = text.lastIndexOf("}");
@@ -270,7 +370,6 @@ export async function ingestInbound(input: IngestInput) {
       if (parse.explicit) {
         assigneeId = assigneeId ?? (await pickAssignee(input.workspaceId));
         await markUrgent({
-          workspaceId: input.workspaceId,
           conversationId: conversation.id,
           reason: "ai_error",
           assigneeId,
@@ -286,29 +385,40 @@ export async function ingestInbound(input: IngestInput) {
     await prisma.contact.update({ where: { id: contact.id }, data: { phone: parsed.phone } });
   }
 
-  const shouldCreateLead = input.source === "web_form" || hasCreateLeadAction;
+  const shouldCreateLead = input.source === "web_form" || hasCreateLeadAction || handoff;
   let leadId: string | null = null;
   if (shouldCreateLead) {
-    const lead = await prisma.lead.create({
-      data: {
-        workspaceId: input.workspaceId,
-        contactId: contact.id,
-        conversationId: conversation.id,
-        status: "new",
-        source: input.source,
-        urgent: needsWatch,
-        assigneeId: needsWatch ? assigneeId : null,
-        comment: parsed.summary || input.body.slice(0, 400),
-      },
-    });
-    leadId = lead.id;
-    if (needsWatch && assigneeId) {
-      await prisma.lead.update({ where: { id: lead.id }, data: { urgent: true, assigneeId } });
+    const existing =
+      input.source !== "web_form"
+        ? await prisma.lead.findFirst({ where: { conversationId: conversation.id } })
+        : null;
+    if (existing) {
+      leadId = existing.id;
+      if ((needsWatch || handoff) && assigneeId) {
+        await prisma.lead.update({
+          where: { id: existing.id },
+          data: { urgent: true, assigneeId },
+        });
+      }
+    } else {
+      const lead = await prisma.lead.create({
+        data: {
+          workspaceId: input.workspaceId,
+          contactId: contact.id,
+          conversationId: conversation.id,
+          status: "new",
+          source: input.source,
+          urgent: needsWatch || handoff,
+          assigneeId: needsWatch || handoff ? assigneeId : null,
+          comment: sanitizeModelText(parsed.summary || input.body).slice(0, 400),
+        },
+      });
+      leadId = lead.id;
     }
-    if (!needsWatch) {
+    if (!needsWatch && !handoff) {
       const conv = await prisma.conversation.findUnique({ where: { id: conversation.id } });
-      if (conv?.urgent && conv.urgentReason === "ai_error" && assigneeId) {
-        await prisma.lead.update({ where: { id: lead.id }, data: { urgent: true, assigneeId } });
+      if (conv?.urgent && conv.urgentReason === "ai_error" && assigneeId && leadId) {
+        await prisma.lead.update({ where: { id: leadId }, data: { urgent: true, assigneeId } });
       }
     }
   }
@@ -320,14 +430,16 @@ export async function ingestInbound(input: IngestInput) {
   if (draft) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
-      const system =
+      const system = withKnowledge(
         draft.prompt ||
-        "Ты менеджер малого бизнеса. Напиши короткий черновик ответа клиенту по-русски. Не обещай того, чего нет в тексте.";
+          "Ты менеджер малого бизнеса. Напиши короткий черновик ответа клиенту по-русски. Не обещай того, чего нет в тексте.",
+        articles,
+      );
       const text = await runModel({
         provider: binding.provider,
         model: binding.model,
         system,
-        user: input.body,
+        user: history || input.body,
       });
       await prisma.message.create({
         data: {
@@ -348,7 +460,6 @@ export async function ingestInbound(input: IngestInput) {
       if (draft.explicit) {
         assigneeId = assigneeId ?? (await pickAssignee(input.workspaceId));
         await markUrgent({
-          workspaceId: input.workspaceId,
           conversationId: conversation.id,
           leadId,
           reason: "ai_error",
@@ -366,8 +477,8 @@ export async function ingestInbound(input: IngestInput) {
         await runModel({
           provider: binding.provider,
           model: binding.model,
-          system: deep.prompt || "Кратко отметь риски и вопросы по заявке.",
-          user: input.body,
+          system: withKnowledge(deep.prompt || "Кратко отметь риски и вопросы по заявке.", articles),
+          user: history || input.body,
         });
         await prisma.flowBlock.update({ where: { id: deep.blockId }, data: { lastError: null } });
       } catch (e) {
@@ -377,10 +488,13 @@ export async function ingestInbound(input: IngestInput) {
     }
   }
 
+  const conv = await prisma.conversation.findUnique({ where: { id: conversation.id } });
   return {
     contactId: contact.id,
     conversationId: conversation.id,
     leadId,
-    urgent: needsWatch,
+    urgent: Boolean(conv?.urgent),
+    start: false,
+    greeting: null as string | null,
   };
 }

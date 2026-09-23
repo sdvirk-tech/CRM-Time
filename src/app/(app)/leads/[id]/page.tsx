@@ -56,13 +56,13 @@ export default function LeadPage() {
         {lead.assignee ? lead.assignee.name : "без ответственного"}
       </p>
       <p className="mt-4">
-        <Link className="text-pine underline" href={`/contacts/${lead.contact.id}`}>
+        <Link className="link" href={`/contacts/${lead.contact.id}`}>
           Контакт
         </Link>
         {lead.conversation && (
           <>
             {" · "}
-            <Link className="text-pine underline" href={`/inbox/${lead.conversation.id}`}>
+            <Link className="link" href={`/inbox/${lead.conversation.id}`}>
               Диалог
             </Link>
           </>
@@ -73,7 +73,7 @@ export default function LeadPage() {
         <button onClick={() => save()} className="rounded-xl border border-line px-4 py-2">
           Сохранить комментарий
         </button>
-        <button onClick={claim} className="rounded-xl bg-pine px-4 py-2 text-paper">
+        <button onClick={claim} className="rounded-xl bg-accent px-4 py-2 text-ink">
           Взять
         </button>
         <button onClick={() => save("in_progress")} className="rounded-xl border px-4 py-2">

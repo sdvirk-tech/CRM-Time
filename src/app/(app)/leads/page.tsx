@@ -46,7 +46,7 @@ export default function LeadsPage() {
       <p className="mt-2 text-muted">Новые: {newCount}</p>
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col) => (
-          <section key={col.key} className="rounded-2xl border border-line bg-slot p-3">
+          <section key={col.key} className="rounded-2xl border border-accent bg-mist p-3">
             <h2 className="px-2 text-lg font-semibold">{col.title}</h2>
             <ul className="mt-3 space-y-2">
               {items
@@ -64,7 +64,7 @@ export default function LeadsPage() {
                       {l.assignee ? ` · ${l.assignee.name}` : " · никто"}
                     </p>
                     {col.key === "new" && (
-                      <button onClick={() => claim(l.id)} className="mt-2 text-sm text-pine underline">
+                      <button onClick={() => claim(l.id)} className="mt-2 text-sm link">
                         Взять
                       </button>
                     )}

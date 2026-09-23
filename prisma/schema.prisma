@@ -24,6 +24,7 @@ model Workspace {
   name             String
   tradeDescription String            @default("") @map("trade_description")
   defaultModel     String?           @map("default_model")
+  greeting         String            @default("Здравствуйте! Напишите задачу или попросите менеджера.")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   members          WorkspaceMember[]
@@ -40,6 +41,8 @@ model Workspace {
   customFields     CustomField[]
   fieldValues      FieldValue[]
   invites          Invite[]
+  knowledge        KnowledgeArticle[]
+  channelEvents    ChannelEvent[]
   @@map("workspaces")
 }
 
@@ -128,6 +131,7 @@ model Channel {
   workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contactChannels ContactChannel[]
   conversations Conversation[]
+  events        ChannelEvent[]
   @@index([workspaceId])
   @@map("channels")
 }
@@ -261,6 +265,31 @@ model FieldValue {
   @@index([contactId])
   @@index([leadId])
   @@map("field_values")
+}
+
+model KnowledgeArticle {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  title       String
+  body        String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId])
+  @@map("knowledge_articles")
+}
+
+model ChannelEvent {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  channelId   String    @map("channel_id")
+  eventKey    String    @map("event_key")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel     Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  @@unique([channelId, eventKey])
+  @@index([workspaceId])
+  @@map("channel_events")
 }
 
 model Invite {
