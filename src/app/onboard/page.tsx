@@ -29,7 +29,7 @@ export default function OnboardPage() {
       <p className="text-sm uppercase tracking-[0.2em] text-pine">Онбординг</p>
       <h1 className="mt-3 font-serif text-4xl">Чем торгуем и куда класть</h1>
       <p className="mt-2 text-muted">После этого на холсте пустая цепочка: положите канал.</p>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4" autoComplete="off">
+      <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <label className="block text-sm">
           Название воркспейса
           <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -43,7 +43,9 @@ export default function OnboardPage() {
           Шаблон полей ВЭД (ТН ВЭД, Incoterms, контейнер)
         </label>
         {error && <p className="text-sm text-urgent">{error}</p>}
-        <button className="rounded-xl bg-ink px-5 py-2.5 text-paper">Открыть холст</button>
+        <button type="submit" className="rounded-xl bg-ink px-5 py-2.5 text-paper">
+          Открыть холст
+        </button>
       </form>
     </main>
   );
