@@ -83,6 +83,8 @@ export default function ConversationPage() {
     else if (action === "reset") setMsg("Сессия сброшена, клиенту ничего не ушло");
     else setMsg("Диалог закрыт");
     await load();
+    if (res.ok && action === "ai") setMsg(json.resent ? "Вернули ИИ, последний ответ ушёл клиенту" : "Вернули ИИ");
+    if (res.ok && action === "redirect") setMsg("Перенаправили");
   }
 
   if (!data?.id) return <div className="p-8 text-muted">Загрузка…</div>;
@@ -106,6 +108,7 @@ export default function ConversationPage() {
           {data.status === "manager" && " · у менеджера"}
           {data.status === "closed" && " · закрыто"}
         </p>
+        {msg && <p className="ok-banner mt-3 inline-block rounded px-2 py-1 text-sm">{msg}</p>}
         {data.aiError && <p className="mt-3 rounded border border-urgent/40 bg-urgent/15 p-3 text-sm">{data.aiError}</p>}
         <ol className="mt-6 space-y-3">
           {data.messages.map((m) => (
@@ -155,7 +158,6 @@ export default function ConversationPage() {
                 : "Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить»."}
             </p>
           )}
-          {msg && <p className="ok-banner mt-2 inline-block rounded px-2 py-1 text-sm">{msg}</p>}
         </form>
       </section>
       <aside className="border-t border-line bg-mist p-6 lg:border-l lg:border-t-0">
