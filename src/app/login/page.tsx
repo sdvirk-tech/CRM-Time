@@ -1,46 +1,46 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [live, setLive] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const [box, setBox] = useState(false);
 
   useEffect(() => {
-    setLive(true);
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
         setBox(d.deployMode === "box");
-        if (d.user?.onboarded) router.replace("/flow");
-        else if (d.user) router.replace("/onboard");
-      });
-  }, [router]);
+        if (d.user?.onboarded) window.location.replace("/flow");
+        else if (d.user) window.location.replace("/onboard");
+      })
+      .catch(() => {});
+  }, []);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
+  async function login() {
     setError("");
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data.error || "Ошибка входа");
-      return;
+    setPending(true);
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Ошибка входа");
+        setPending(false);
+        return;
+      }
+      window.location.assign(data.needsOnboarding ? "/onboard" : "/flow");
+    } catch {
+      setError("Сеть недоступна");
+      setPending(false);
     }
-    window.location.assign(data.needsOnboarding ? "/onboard" : "/flow");
-  }
-
-  if (!live) {
-    return <main className="p-8 text-muted">Загрузка…</main>;
   }
 
   return (
@@ -48,7 +48,7 @@ export default function LoginPage() {
       <p className="text-sm uppercase tracking-[0.2em] text-pine">CRM-Time</p>
       <h1 className="mt-3 font-serif text-4xl">Вход в нож</h1>
       <p className="mt-2 text-muted">Канал → AI → действие. Входящие и лиды рядом.</p>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4" autoComplete="off">
+      <div className="mt-8 space-y-4">
         <label className="block text-sm">
           Почта
           <input
@@ -56,9 +56,8 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
-            name="email"
-            autoComplete="username"
-            required
+            autoComplete="off"
+            onKeyDown={(e) => e.key === "Enter" && login()}
           />
         </label>
         <label className="block text-sm">
@@ -68,16 +67,20 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
-            name="password"
-            autoComplete="current-password"
-            required
+            autoComplete="off"
+            onKeyDown={(e) => e.key === "Enter" && login()}
           />
         </label>
         {error && <p className="text-sm text-urgent">{error}</p>}
-        <button type="submit" className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper">
-          Войти
+        <button
+          type="button"
+          disabled={pending}
+          onClick={login}
+          className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper disabled:opacity-60"
+        >
+          {pending ? "Входим…" : "Войти"}
         </button>
-      </form>
+      </div>
       {!box && (
         <p className="mt-6 text-sm text-muted">
           Нет воркспейса?{" "}
