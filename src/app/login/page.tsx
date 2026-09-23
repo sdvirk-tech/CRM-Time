@@ -6,12 +6,14 @@ import { FormEvent, useEffect, useState } from "react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [live, setLive] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [box, setBox] = useState(false);
 
   useEffect(() => {
+    setLive(true);
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
@@ -34,7 +36,11 @@ export default function LoginPage() {
       setError(data.error || "Ошибка входа");
       return;
     }
-    router.push(data.needsOnboarding ? "/onboard" : "/flow");
+    window.location.assign(data.needsOnboarding ? "/onboard" : "/flow");
+  }
+
+  if (!live) {
+    return <main className="p-8 text-muted">Загрузка…</main>;
   }
 
   return (
@@ -42,7 +48,7 @@ export default function LoginPage() {
       <p className="text-sm uppercase tracking-[0.2em] text-pine">CRM-Time</p>
       <h1 className="mt-3 font-serif text-4xl">Вход в нож</h1>
       <p className="mt-2 text-muted">Канал → AI → действие. Входящие и лиды рядом.</p>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <form onSubmit={onSubmit} className="mt-8 space-y-4" autoComplete="off">
         <label className="block text-sm">
           Почта
           <input
@@ -50,6 +56,8 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             type="email"
+            name="email"
+            autoComplete="username"
             required
           />
         </label>
@@ -60,11 +68,15 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             type="password"
+            name="password"
+            autoComplete="current-password"
             required
           />
         </label>
         {error && <p className="text-sm text-urgent">{error}</p>}
-        <button className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper">Войти</button>
+        <button type="submit" className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper">
+          Войти
+        </button>
       </form>
       {!box && (
         <p className="mt-6 text-sm text-muted">

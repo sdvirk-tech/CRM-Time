@@ -1,11 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 export default function RegisterPage() {
-  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +31,7 @@ export default function RegisterPage() {
       setError(data.error || "Ошибка");
       return;
     }
-    router.push("/onboard");
+    window.location.assign("/onboard");
   }
 
   if (blocked) {
@@ -52,21 +50,21 @@ export default function RegisterPage() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6">
       <p className="text-sm uppercase tracking-[0.2em] text-pine">CRM-Time</p>
       <h1 className="mt-3 font-serif text-4xl">Собрать воркспейс</h1>
-      <form onSubmit={onSubmit} className="mt-8 space-y-4">
+      <form onSubmit={onSubmit} className="mt-8 space-y-4" autoComplete="off">
         <label className="block text-sm">
           Ваше имя
-          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" value={name} onChange={(e) => setName(e.target.value)} required />
+          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" name="name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
         <label className="block text-sm">
           Почта
-          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" type="email" name="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </label>
         <label className="block text-sm">
           Пароль
-          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
+          <input className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2" type="password" name="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
         </label>
         {error && <p className="text-sm text-urgent">{error}</p>}
-        <button className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper">Создать</button>
+        <button type="submit" className="w-full rounded-xl bg-ink px-4 py-2.5 text-paper">Создать</button>
       </form>
       <p className="mt-6 text-sm text-muted">
         Уже есть вход?{" "}
