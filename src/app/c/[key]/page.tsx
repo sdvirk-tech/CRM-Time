@@ -38,6 +38,10 @@ export default function PublicChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, params.key]);
 
+  useEffect(() => {
+    document.getElementById("chat-end")?.scrollIntoView({ block: "end" });
+  }, [messages]);
+
   const visible = useMemo(() => messages, [messages]);
 
   async function send(e: FormEvent) {
@@ -68,7 +72,7 @@ export default function PublicChatPage() {
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      <ol className="mt-4 flex-1 space-y-2 overflow-auto rounded border border-accent bg-paper p-3">
+      <ol className="mt-4 max-h-[55vh] flex-1 space-y-2 overflow-auto rounded border border-accent bg-paper p-3">
         {visible.length === 0 && <li className="text-sm text-muted">Напишите — ответим здесь.</li>}
         {visible.map((m) => (
           <li
@@ -80,6 +84,7 @@ export default function PublicChatPage() {
             {m.body}
           </li>
         ))}
+        <li id="chat-end" className="h-0 list-none p-0" />
       </ol>
       <form onSubmit={send} className="mt-3 flex gap-2">
         <input
