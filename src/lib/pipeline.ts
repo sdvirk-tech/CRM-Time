@@ -46,9 +46,11 @@ async function markUrgent(opts: {
   reason: "default_model" | "ai_error" | "handoff";
   assigneeId: string;
 }) {
+  const conv = await prisma.conversation.findUnique({ where: { id: opts.conversationId } });
+  const reason = conv?.urgentReason === "handoff" ? "handoff" : opts.reason;
   await prisma.conversation.update({
     where: { id: opts.conversationId },
-    data: { urgent: true, urgentReason: opts.reason, unread: true },
+    data: { urgent: true, urgentReason: reason, unread: true },
   });
   if (opts.leadId) {
     await prisma.lead.update({
