@@ -365,6 +365,66 @@ async function main() {
   r = await req("/api/auth/password", { method: "POST", cookie, json: { current: "secret12", next: "secret12" } });
   assert(r.status === 200 && r.data.ok === true, "change password");
 
+  const chatBlock = await add("channel_web_chat");
+  const flowChat = await req("/api/flow", { cookie });
+  const chatCh = flowChat.data.channels.find((c) => c.type === "web_chat");
+  assert(chatCh, "web chat channel");
+  assert(String(chatCh.snippet).includes("#F2F2F2"), "chat snippet paper");
+  assert(String(chatCh.snippet).includes("#99CCFF"), "chat snippet accent");
+  assert(String(chatCh.chatUrl).includes("/c/"), "chat url");
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: "chat-" + id, name: "Гость", text: "нужен контейнер FCA" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "web chat ingest " + JSON.stringify(r.data));
+  const chatPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-${id}`);
+  assert(chatPoll.status === 200, "web chat poll");
+  assert(
+    (chatPoll.data.messages || []).some((m) => m.direction === "outbound"),
+    "explicit model publishes chat reply",
+  );
+
+  const team = await req("/api/team", { cookie });
+  const mgr = (team.data.members || []).find((m) => m.role === "manager");
+  assert(mgr?.userId, "manager userId");
+  r = await req(`/api/conversations/${r.data.conversationId}`, {
+    method: "PATCH",
+    cookie,
+    json: { action: "redirect", userId: mgr.userId },
+  });
+  assert(r.status === 200 && r.data.conversation.assigneeId === mgr.userId, "redirect to manager");
+  const convBeforeAi = await req(`/api/conversations/${r.data.conversation.id}`, { cookie });
+  const outBefore = (convBeforeAi.data.messages || []).filter((m) => m.direction === "outbound").length;
+  r = await req(`/api/conversations/${convBeforeAi.data.id}`, { method: "PATCH", cookie, json: { action: "ai" } });
+  assert(r.status === 200 && r.data.conversation.status === "ai", "return to AI");
+  assert(r.data.resent === true, "repeat last answer");
+  const convAfterAi = await req(`/api/conversations/${convBeforeAi.data.id}`, { cookie });
+  const outAfter = (convAfterAi.data.messages || []).filter((m) => m.direction === "outbound").length;
+  assert(outAfter === outBefore + 1, "last answer resent as outbound");
+
+  r = await req("/api/knowledge/topics", { method: "POST", cookie, json: { name: "Логистика" } });
+  assert(r.status === 200 && r.data.topic.id, "create knowledge topic");
+  const topicId = r.data.topic.id;
+  r = await req("/api/knowledge", {
+    method: "POST",
+    cookie,
+    json: { title: "FCA папка", body: "FCA — риск на покупателе после передачи.", topicId },
+  });
+  assert(r.status === 200 && r.data.article.topicId === topicId, "article in topic");
+  r = await req(`/api/flow/blocks/${chatBlock.id}`, { method: "PATCH", cookie, json: { topicId } });
+  assert(r.status === 200, "bind topic to chat channel");
+  r = await req("/api/knowledge/topics", { method: "POST", cookie: mgrCookie, json: { name: "нет" } });
+  assert(r.status === 403, "manager cannot create topic");
+
+  const log = await req("/api/log", { cookie });
+  assert(log.status === 200 && (log.data.items || []).length > 0, "activity log has events");
+  assert(
+    (log.data.items || []).some((i) => i.event === "ingest" || i.event === "redirect"),
+    "log contains ingest or redirect",
+  );
+  r = await req("/api/log", { cookie: mgrCookie });
+  assert(r.status === 200, "manager can read log");
+
   const deep = await req("/api/models", { cookie });
   assert(deep.data.deepAnalysisEnabled === false || typeof deep.data.deepAnalysisEnabled === "boolean", "deep flag");
 

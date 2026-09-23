@@ -36,8 +36,16 @@ export async function applyVedTemplate(workspaceId: string) {
     where: { workspaceId, title: VED_KNOWLEDGE.title },
   });
   if (!existing) {
+    let topic = await prisma.knowledgeTopic.findFirst({
+      where: { workspaceId, name: "ТН ВЭД" },
+    });
+    if (!topic) {
+      topic = await prisma.knowledgeTopic.create({
+        data: { workspaceId, name: "ТН ВЭД" },
+      });
+    }
     await prisma.knowledgeArticle.create({
-      data: { workspaceId, title: VED_KNOWLEDGE.title, body: VED_KNOWLEDGE.body },
+      data: { workspaceId, topicId: topic.id, title: VED_KNOWLEDGE.title, body: VED_KNOWLEDGE.body },
     });
   }
 }
@@ -52,7 +60,7 @@ export function inviteToken(): string {
 
 export type BlockConfig = {
   channelId?: string;
-  channelType?: "telegram" | "web_form";
+  channelType?: "telegram" | "web_form" | "web_chat";
   aiProcessId?: string;
   processType?: "parse_inbound" | "draft_reply" | "deep_analysis";
   actionType?: "create_lead" | "show_draft";

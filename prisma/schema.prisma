@@ -43,7 +43,9 @@ model Workspace {
   fieldValues      FieldValue[]
   invites          Invite[]
   knowledge        KnowledgeArticle[]
+  knowledgeTopics  KnowledgeTopic[]
   channelEvents    ChannelEvent[]
+  activityEvents   ActivityEvent[]
   @@map("workspaces")
 }
 
@@ -128,9 +130,11 @@ model Channel {
   secretsEnc  String?           @map("secrets_enc")
   config      Json              @default("{}")
   enabled     Boolean           @default(true)
+  topicId     String?           @map("topic_id")
   createdAt   DateTime          @default(now()) @map("created_at")
   updatedAt   DateTime          @updatedAt @map("updated_at")
   workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  topic       KnowledgeTopic?   @relation(fields: [topicId], references: [id], onDelete: SetNull)
   contactChannels ContactChannel[]
   conversations Conversation[]
   events        ChannelEvent[]
@@ -193,6 +197,7 @@ model Conversation {
   assignee    User?     @relation("ConversationAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   messages    Message[]
   leads       Lead[]
+  activity    ActivityEvent[]
   @@index([workspaceId])
   @@index([workspaceId, unread])
   @@map("conversations")
@@ -272,17 +277,49 @@ model FieldValue {
   @@map("field_values")
 }
 
+model KnowledgeTopic {
+  id          String             @id @default(cuid())
+  workspaceId String             @map("workspace_id")
+  name        String
+  enabled     Boolean            @default(true)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+  workspace   Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  articles    KnowledgeArticle[]
+  channels    Channel[]
+  @@index([workspaceId])
+  @@map("knowledge_topics")
+}
+
 model KnowledgeArticle {
-  id          String    @id @default(cuid())
-  workspaceId String    @map("workspace_id")
+  id          String           @id @default(cuid())
+  workspaceId String           @map("workspace_id")
+  topicId     String?          @map("topic_id")
   title       String
   body        String
-  enabled     Boolean   @default(true)
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  enabled     Boolean          @default(true)
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  topic       KnowledgeTopic?  @relation(fields: [topicId], references: [id], onDelete: SetNull)
   @@index([workspaceId])
+  @@index([topicId])
   @@map("knowledge_articles")
+}
+
+model ActivityEvent {
+  id             String        @id @default(cuid())
+  workspaceId    String        @map("workspace_id")
+  conversationId String?       @map("conversation_id")
+  channelId      String?       @map("channel_id")
+  actor          String
+  event          String
+  message        String
+  createdAt      DateTime      @default(now()) @map("created_at")
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  @@index([workspaceId, createdAt])
+  @@map("activity_events")
 }
 
 model ChannelEvent {

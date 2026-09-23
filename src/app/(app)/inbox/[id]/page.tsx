@@ -5,22 +5,32 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
+type Operator = { userId: string; name: string; role: string };
 type Data = {
   id: string;
   urgent: boolean;
   urgentReason: string | null;
   status: string;
   aiError: string | null;
+  assignee?: { id: string; name: string } | null;
+  operators?: Operator[];
   contact: { id: string; name: string; phone: string | null; leads: { id: string }[] };
   channel: { type: string; name: string };
   messages: Msg[];
 };
+
+function channelLabel(type: string) {
+  if (type === "web_form") return "форма";
+  if (type === "web_chat") return "чат";
+  return "Telegram";
+}
 
 export default function ConversationPage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<Data | null>(null);
   const [text, setText] = useState("");
   const [msg, setMsg] = useState("");
+  const [target, setTarget] = useState("");
 
   async function load() {
     const res = await fetch(`/api/conversations/${params.id}`);
@@ -28,6 +38,7 @@ export default function ConversationPage() {
     setData(json);
     const draft = [...(json.messages ?? [])].reverse().find((m: Msg) => m.direction === "draft");
     if (draft) setText(draft.body);
+    if (!target && json.operators?.[0]) setTarget(json.operators[0].userId);
   }
 
   useEffect(() => {
@@ -58,30 +69,25 @@ export default function ConversationPage() {
     await load();
   }
 
-  async function act(action: "take" | "reset" | "close" | "ai") {
+  async function act(action: "take" | "reset" | "close" | "ai" | "redirect") {
     const res = await fetch(`/api/conversations/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action }),
+      body: JSON.stringify({ action, userId: action === "redirect" ? target : undefined }),
     });
     const json = await res.json();
     if (!res.ok) setMsg(json.error);
-    else {
-      setMsg(
-        action === "take"
-          ? "Взяли в работу, ИИ молчит"
-          : action === "reset"
-            ? "Сессия сброшена, клиенту ничего не ушло"
-            : action === "close"
-              ? "Диалог закрыт"
-              : "Вернули ИИ",
-      );
-    }
+    else if (action === "ai") setMsg(json.resent ? "Вернули ИИ, последний ответ ушёл клиенту" : "Вернули ИИ");
+    else if (action === "redirect") setMsg("Перенаправили");
+    else if (action === "take") setMsg("Взяли в работу, ИИ молчит");
+    else if (action === "reset") setMsg("Сессия сброшена, клиенту ничего не ушло");
+    else setMsg("Диалог закрыт");
     await load();
   }
 
   if (!data?.id) return <div className="p-8 text-muted">Загрузка…</div>;
   const draft = [...data.messages].reverse().find((m) => m.direction === "draft");
+  const others = (data.operators ?? []).filter((o) => o.userId !== data.assignee?.id);
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[1fr_280px]">
@@ -91,7 +97,8 @@ export default function ConversationPage() {
           {data.urgent && <span className="urgent-badge">срочно</span>}
         </div>
         <p className="mt-1 text-sm text-muted">
-          {data.channel.type === "web_form" ? "сайт" : "Telegram"}
+          {channelLabel(data.channel.type)}
+          {data.assignee && ` · ${data.assignee.name}`}
           {data.urgentReason === "default_model" && " · дефолт модели — человек в контуре"}
           {data.urgentReason === "ai_error" && " · сбой модели"}
           {data.urgentReason === "handoff" && " · клиент просит человека"}
@@ -141,7 +148,13 @@ export default function ConversationPage() {
               Отправить
             </button>
           </div>
-          {draft && <p className="text-xs text-muted">Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить».</p>}
+          {draft && (
+            <p className="text-xs text-muted">
+              {data.channel.type === "web_chat"
+                ? "В чате на сайте ответ виден, если модель явная. Иначе — после «Отправить»."
+                : "Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить»."}
+            </p>
+          )}
           {msg && <p className="ok-banner mt-2 inline-block rounded px-2 py-1 text-sm">{msg}</p>}
         </form>
       </section>
@@ -160,11 +173,9 @@ export default function ConversationPage() {
               Взять
             </button>
           )}
-          {data.status === "manager" && (
-            <button onClick={() => act("ai")} className="rounded border border-line px-4 py-2 text-sm">
-              Вернуть ИИ
-            </button>
-          )}
+          <button onClick={() => act("ai")} className="rounded border border-line px-4 py-2 text-sm">
+            Вернуть ИИ (повтор ответа)
+          </button>
           <button onClick={() => act("reset")} className="rounded border border-line px-4 py-2 text-sm">
             Сбросить сессию
           </button>
@@ -174,6 +185,21 @@ export default function ConversationPage() {
             </button>
           )}
         </div>
+        {others.length > 0 && (
+          <div className="mt-4 space-y-2">
+            <p className="text-xs uppercase tracking-widest text-muted">Перенаправить</p>
+            <select className="w-full rounded border border-line bg-paper px-2 py-1 text-sm" value={target} onChange={(e) => setTarget(e.target.value)}>
+              {data.operators?.map((o) => (
+                <option key={o.userId} value={o.userId}>
+                  {o.name}
+                </option>
+              ))}
+            </select>
+            <button onClick={() => act("redirect")} className="w-full rounded border border-accent bg-paper px-4 py-2 text-sm">
+              Перенаправить
+            </button>
+          </div>
+        )}
         {data.contact.leads[0] && (
           <Link className="mt-3 block text-sm underline" href={`/leads/${data.contact.leads[0].id}`}>
             К лиду

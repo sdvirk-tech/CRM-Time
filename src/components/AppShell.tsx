@@ -9,6 +9,7 @@ const nav = [
   { href: "/inbox", label: "Входящие" },
   { href: "/leads", label: "Лиды" },
   { href: "/knowledge", label: "Знания" },
+  { href: "/log", label: "Журнал" },
   { href: "/fields", label: "Поля" },
   { href: "/team", label: "Команда" },
 ];

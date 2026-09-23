@@ -38,9 +38,16 @@ export async function GET() {
         hasToken,
         enabled: c.enabled,
         allowedOrigins: cfg.allowedOrigins ?? [],
-        snippet: formSnippet(c.publicKey),
+        snippet:
+          c.type === "web_chat"
+            ? chatSnippet(c.publicKey)
+            : c.type === "web_form"
+              ? formSnippet(c.publicKey)
+              : "",
         formUrl: `${appUrl()}/f/${c.publicKey}`,
+        chatUrl: `${appUrl()}/c/${c.publicKey}`,
         webhookUrl: `${appUrl()}/api/ingest/telegram/${c.publicKey}`,
+        topicId: c.topicId,
         tokenPreview: isOwner && c.secretsEnc ? "••••••••" : null,
       };
     });
@@ -57,8 +64,18 @@ export async function GET() {
       role: session.role,
       defaultModel: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.defaultModel ?? null,
       greeting: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.greeting ?? "",
+      topics: await prisma.knowledgeTopic.findMany({
+        where: { workspaceId: session.workspaceId },
+        orderBy: { createdAt: "asc" },
+      }),
     });
   });
+}
+
+function chatSnippet(key: string) {
+  const url = `${appUrl()}/c/${key}`;
+  return `<!-- CRM-Time chat -->
+<iframe src="${url}" title="Чат" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;border:1px solid #99CCFF;width:360px;height:480px"></iframe>`;
 }
 
 function formSnippet(key: string) {

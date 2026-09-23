@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { logActivity } from "./activity";
 import { asConfig } from "./workspace";
 import { parseBinding, runModel } from "./ai";
 import { validateField } from "./validators";
@@ -15,7 +16,7 @@ import {
 export type IngestInput = {
   workspaceId: string;
   channelId: string;
-  source: "web_form" | "telegram";
+  source: "web_form" | "telegram" | "web_chat";
   externalId: string;
   username?: string;
   name?: string;
@@ -249,9 +250,14 @@ export async function ingestInbound(input: IngestInput) {
   );
   const needsWatch = processes.some((p) => !p.explicit);
   const handoff = wantsManager(input.body);
+  const channelRow = await prisma.channel.findUnique({ where: { id: input.channelId } });
   const articles = pickKnowledge(
     await prisma.knowledgeArticle.findMany({
-      where: { workspaceId: input.workspaceId, enabled: true },
+      where: {
+        workspaceId: input.workspaceId,
+        enabled: true,
+        ...(channelRow?.topicId ? { topicId: channelRow.topicId } : {}),
+      },
       orderBy: { createdAt: "asc" },
     }),
     input.body,
@@ -285,6 +291,14 @@ export async function ingestInbound(input: IngestInput) {
       body: input.body,
     },
   });
+  await logActivity({
+    workspaceId: input.workspaceId,
+    conversationId: conversation.id,
+    channelId: input.channelId,
+    actor: "система",
+    event: "ingest",
+    message: `${input.source}: ${input.body.slice(0, 160)}`,
+  });
 
   if (isStartCommand(input.body)) {
     const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
@@ -308,6 +322,14 @@ export async function ingestInbound(input: IngestInput) {
     await prisma.conversation.update({
       where: { id: conversation.id },
       data: { unread: true, urgent: false, urgentReason: null, aiError: null, status: "ai" },
+    });
+    await logActivity({
+      workspaceId: input.workspaceId,
+      conversationId: conversation.id,
+      channelId: input.channelId,
+      actor: "система",
+      event: "start",
+      message: "Сессия сброшена по /start",
     });
     return {
       contactId: contact.id,
@@ -353,6 +375,14 @@ export async function ingestInbound(input: IngestInput) {
       data: { status: "manager", assigneeId },
     });
     humanOwns = true;
+    await logActivity({
+      workspaceId: input.workspaceId,
+      conversationId: conversation.id,
+      channelId: input.channelId,
+      actor: "клиент",
+      event: "handoff",
+      message: "Клиент просит человека",
+    });
   }
 
   const history = await sessionHistory(conversation.id);
@@ -393,6 +423,14 @@ export async function ingestInbound(input: IngestInput) {
           body: `Ошибка AI «разобрать»: ${msg}`,
           aiError: msg,
         },
+      });
+      await logActivity({
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+        channelId: input.channelId,
+        actor: "система",
+        event: "ai_error",
+        message: msg,
       });
       if (parse.explicit) {
         assigneeId = assigneeId ?? (await pickAssignee(input.workspaceId));
@@ -476,6 +514,17 @@ export async function ingestInbound(input: IngestInput) {
           body: text,
         },
       });
+      if (input.source === "web_chat" && draft.explicit && !needsWatch && !humanOwns && !handoff) {
+        await prisma.message.create({
+          data: {
+            workspaceId: input.workspaceId,
+            conversationId: conversation.id,
+            direction: "outbound",
+            body: text,
+            sentAt: new Date(),
+          },
+        });
+      }
       await prisma.flowBlock.update({ where: { id: draft.blockId }, data: { lastError: null } });
       const reset = await prisma.message.findFirst({
         where: { conversationId: conversation.id, direction: "system", body: { startsWith: "Сессия сброшена" } },

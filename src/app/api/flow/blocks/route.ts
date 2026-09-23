@@ -9,6 +9,7 @@ const schema = z.object({
   kind: z.enum([
     "channel_web_form",
     "channel_telegram",
+    "channel_web_chat",
     "ai_parse",
     "ai_draft",
     "ai_deep",
@@ -30,13 +31,23 @@ export async function POST(req: Request) {
     const position = (last._max.position ?? -1) + 1;
     const ws = session.workspaceId;
 
-    if (parsed.data.kind === "channel_web_form" || parsed.data.kind === "channel_telegram") {
-      const type = parsed.data.kind === "channel_web_form" ? "web_form" : "telegram";
+    if (
+      parsed.data.kind === "channel_web_form" ||
+      parsed.data.kind === "channel_telegram" ||
+      parsed.data.kind === "channel_web_chat"
+    ) {
+      const type =
+        parsed.data.kind === "channel_web_form"
+          ? "web_form"
+          : parsed.data.kind === "channel_web_chat"
+            ? "web_chat"
+            : "telegram";
+      const names = { web_form: "Форма сайта", web_chat: "Чат на сайте", telegram: "Telegram" } as const;
       const channel = await prisma.channel.create({
         data: {
           workspaceId: ws,
           type,
-          name: type === "web_form" ? "Форма сайта" : "Telegram",
+          name: names[type],
           publicKey: publicKey(),
           config: { allowedOrigins: [] },
         },

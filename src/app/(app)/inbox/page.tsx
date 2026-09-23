@@ -20,7 +20,7 @@ export default function InboxPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [unread, setUnread] = useState(0);
   const [filter, setFilter] = useState<"all" | "unread" | "urgent">("all");
-  const [channel, setChannel] = useState<"all" | "web_form" | "telegram">("all");
+  const [channel, setChannel] = useState<"all" | "web_form" | "telegram" | "web_chat">("all");
   const [status, setStatus] = useState<"all" | "ai" | "manager" | "closed">("all");
 
   useEffect(() => {
@@ -55,9 +55,9 @@ export default function InboxPage() {
             {f === "all" ? "все" : f === "unread" ? "без ответа" : "срочно"}
           </button>
         ))}
-        {(["all", "web_form", "telegram"] as const).map((c) => (
+        {(["all", "web_form", "web_chat", "telegram"] as const).map((c) => (
           <button key={c} className={channel === c ? "chip chip-on" : "chip"} onClick={() => setChannel(c)}>
-            {c === "all" ? "все каналы" : c === "web_form" ? "сайт" : "Telegram"}
+            {c === "all" ? "все каналы" : c === "web_form" ? "форма" : c === "web_chat" ? "чат" : "Telegram"}
           </button>
         ))}
         {(["all", "ai", "manager", "closed"] as const).map((s) => (
@@ -80,7 +80,7 @@ export default function InboxPage() {
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
                 <span className="rounded border border-line px-2 py-0.5 text-xs">
-                  {item.channel.type === "web_form" ? "сайт" : "Telegram"}
+                  {item.channel.type === "web_form" ? "форма" : item.channel.type === "web_chat" ? "чат" : "Telegram"}
                   {item.status === "manager" ? " · менеджер" : item.status === "closed" ? " · закрыто" : ""}
                 </span>
                 {item.urgent && <span className="urgent-badge">срочно</span>}

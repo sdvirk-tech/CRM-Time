@@ -10,11 +10,14 @@ type Channel = {
   publicKey: string;
   snippet: string;
   formUrl: string;
+  chatUrl?: string;
   webhookUrl: string;
   hasToken: boolean;
   enabled: boolean;
+  topicId?: string | null;
   allowedOrigins: string[];
 };
+type Topic = { id: string; name: string };
 type Process = {
   id: string;
   type: string;
@@ -39,6 +42,7 @@ type Block = {
 
 const palette = [
   { kind: "channel_web_form", group: "Канал", label: "Форма сайта" },
+  { kind: "channel_web_chat", group: "Канал", label: "Чат на сайте" },
   { kind: "channel_telegram", group: "Канал", label: "Telegram" },
   { kind: "ai_parse", group: "AI", label: "Разобрать входящее" },
   { kind: "ai_draft", group: "AI", label: "Черновик ответа" },
@@ -57,6 +61,7 @@ export default function FlowPage() {
     role: string;
     defaultModel: string | null;
     greeting: string;
+    topics: Topic[];
   } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -288,6 +293,7 @@ export default function FlowPage() {
           channel={data.channels.find((c) => c.id === open.config.channelId)}
           process={data.processes.find((p) => p.id === open.config.aiProcessId)}
           models={data.models}
+          topics={data.topics ?? []}
           owner={owner}
           onClose={() => setOpenId(null)}
           onSaved={async () => {
@@ -304,6 +310,7 @@ function Sheet({
   channel,
   process,
   models,
+  topics,
   owner,
   onClose,
   onSaved,
@@ -312,6 +319,7 @@ function Sheet({
   channel?: Channel;
   process?: Process;
   models: Model[];
+  topics: Topic[];
   owner: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -319,6 +327,7 @@ function Sheet({
   const [token, setToken] = useState("");
   const [origins, setOrigins] = useState(channel?.allowedOrigins.join(", ") ?? "");
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
+  const [topicId, setTopicId] = useState(channel?.topicId ?? "");
   const [prompt, setPrompt] = useState(process?.prompt ?? "");
   const [modelVal, setModelVal] = useState(
     process?.binding ? `${process.binding.provider}:${process.binding.model}` : "",
@@ -339,6 +348,7 @@ function Sheet({
           ? origins.split(",").map((s) => s.trim()).filter(Boolean)
           : undefined,
         enabled: channel ? enabled : undefined,
+        topicId: channel ? topicId || null : undefined,
         prompt,
         provider: modelVal ? provider : "",
         model: modelVal ? model : "",
@@ -403,16 +413,34 @@ function Sheet({
             Принимать входящие
           </label>
         )}
+        {channel && (
+          <label className="mt-3 block text-sm">
+            Папка знаний
+            <select
+              className="mt-1 w-full rounded border border-line bg-paper px-3 py-2"
+              value={topicId}
+              onChange={(e) => setTopicId(e.target.value)}
+              disabled={!owner}
+            >
+              <option value="">все статьи</option>
+              {topics.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
-        {channel?.type === "web_form" && (
+        {(channel?.type === "web_form" || channel?.type === "web_chat") && (
           <div className="mt-6 space-y-3 text-sm">
             <p>
-              Ключ формы: <code>{channel.publicKey}</code>
+              {channel.type === "web_chat" ? "Ключ чата" : "Ключ формы"}: <code>{channel.publicKey}</code>
             </p>
             <p>
-              Тестовая страница:{" "}
-              <a className="link" href={channel.formUrl} target="_blank">
-                {channel.formUrl}
+              {channel.type === "web_chat" ? "Страница чата: " : "Тестовая страница: "}
+              <a className="link" href={channel.type === "web_chat" ? channel.chatUrl : channel.formUrl} target="_blank">
+                {channel.type === "web_chat" ? channel.chatUrl : channel.formUrl}
               </a>
             </p>
             <label className="block">

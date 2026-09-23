@@ -10,7 +10,11 @@ export async function GET() {
       where: { workspaceId: session.workspaceId },
       orderBy: { createdAt: "asc" },
     });
-    return NextResponse.json({ articles, role: session.role });
+    const topics = await prisma.knowledgeTopic.findMany({
+      where: { workspaceId: session.workspaceId },
+      orderBy: { createdAt: "asc" },
+    });
+    return NextResponse.json({ articles, topics, role: session.role });
   });
 }
 
@@ -20,11 +24,17 @@ export async function POST(req: Request) {
       .object({
         title: z.string().min(2),
         body: z.string().min(2),
+        topicId: z.string().nullable().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Нужны заголовок и текст");
     const article = await prisma.knowledgeArticle.create({
-      data: { workspaceId: session.workspaceId, title: parsed.data.title, body: parsed.data.body },
+      data: {
+        workspaceId: session.workspaceId,
+        title: parsed.data.title,
+        body: parsed.data.body,
+        topicId: parsed.data.topicId || undefined,
+      },
     });
     return NextResponse.json({ article });
   });
