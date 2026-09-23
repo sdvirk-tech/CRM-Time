@@ -14,7 +14,8 @@ export async function POST(req: Request) {
     return jsonError("Неверная почта или пароль", 401);
   }
   const membership = user.memberships[0];
-  const dest = new URL(membership ? "/flow" : "/onboard", req.url);
+  const origin = req.headers.get("origin") || `http://${req.headers.get("host")}`;
+  const dest = new URL(membership ? "/flow" : "/onboard", origin);
   const res = NextResponse.redirect(dest, 303);
   await applySessionCookie(res, {
     userId: user.id,
