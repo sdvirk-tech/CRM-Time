@@ -58,7 +58,7 @@ export default function InboxPage() {
           </button>
         ))}
       </div>
-      <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-accent bg-mist">
+      <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-accent bg-paper">
         {visible.length === 0 && <li className="p-6 text-muted">Нет заявок в этом фильтре.</li>}
         {visible.map((item) => (
           <li key={item.id}>

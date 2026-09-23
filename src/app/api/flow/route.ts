@@ -64,6 +64,7 @@ function formSnippet(key: string) {
   const url = `${appUrl()}/api/ingest/web-form/${key}`;
   return `<!-- CRM-Time widget -->
 <form action="${url}" method="POST" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;padding:16px;max-width:420px;border:1px solid #99CCFF">
+  <div style="background:#C5E2FF;color:#1a1a1a;padding:8px 12px;margin:-16px -16px 12px">Оставить заявку</div>
   <input name="name" placeholder="Имя" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
   <input name="phone" placeholder="Телефон" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
   <input name="tnved" placeholder="ТН ВЭД" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">

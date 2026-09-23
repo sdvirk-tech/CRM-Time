@@ -60,7 +60,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center justify-between rounded px-3 py-2 text-sm ${active ? "bg-accent text-ink" : "hover:bg-mist"}`}
+                className={`flex items-center justify-between rounded px-3 py-2 text-sm ${active ? "bg-accent text-ink" : "hover:bg-paper"}`}
               >
                 <span>{item.label}</span>
                 {badge > 0 && (

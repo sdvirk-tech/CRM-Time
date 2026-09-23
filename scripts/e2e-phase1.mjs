@@ -82,6 +82,10 @@ async function main() {
   const parseProc = flow.data.processes.find((p) => p.type === "parse_inbound");
   const draftProc = flow.data.processes.find((p) => p.type === "draft_reply");
   assert(formCh && tgCh && parseProc && draftProc, "slots created");
+  assert(String(formCh.snippet).includes("#F2F2F2"), "widget paper #F2F2F2");
+  assert(String(formCh.snippet).includes("#99CCFF"), "widget accent #99CCFF");
+  assert(String(formCh.snippet).includes("#C5E2FF"), "widget mist #C5E2FF");
+  assert(String(formCh.snippet).includes("color:#1a1a1a"), "widget dark text");
 
   r = await req(`/api/flow/blocks/${parseBlock.id}`, {
     method: "PATCH",
