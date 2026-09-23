@@ -16,6 +16,7 @@ export async function POST(req: Request, ctx: Ctx) {
   const { key } = await ctx.params;
   const channel = await prisma.channel.findUnique({ where: { publicKey: key } });
   if (!channel || channel.type !== "web_form") return jsonError("Форма не найдена", 404);
+  if (!channel.enabled) return jsonError("Канал выключен", 403);
 
   const cfg = (channel.config ?? {}) as { allowedOrigins?: string[] };
   const origin = req.headers.get("origin");

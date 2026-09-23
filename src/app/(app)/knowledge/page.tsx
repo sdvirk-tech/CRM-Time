@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-type Article = { id: string; title: string; body: string };
+type Article = { id: string; title: string; body: string; enabled: boolean };
 
 export default function KnowledgePage() {
   const [articles, setArticles] = useState<Article[]>([]);
@@ -43,6 +43,15 @@ export default function KnowledgePage() {
     await load();
   }
 
+  async function toggle(a: Article) {
+    await fetch(`/api/knowledge/${a.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: !a.enabled }),
+    });
+    await load();
+  }
+
   const owner = role === "owner";
 
   return (
@@ -56,11 +65,19 @@ export default function KnowledgePage() {
         {articles.map((a) => (
           <li key={a.id} className="rounded border border-line bg-slot p-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="font-medium">{a.title}</p>
+              <p className="font-medium">
+                {a.title}
+                {!a.enabled && <span className="ml-2 text-xs text-muted">выкл</span>}
+              </p>
               {owner && (
-                <button onClick={() => remove(a.id)} className="text-xs text-urgent">
-                  Убрать
-                </button>
+                <div className="flex gap-3">
+                  <button onClick={() => toggle(a)} className="text-xs">
+                    {a.enabled ? "Выключить" : "Включить"}
+                  </button>
+                  <button onClick={() => remove(a.id)} className="text-xs text-urgent">
+                    Убрать
+                  </button>
+                </div>
               )}
             </div>
             <p className="mt-2 whitespace-pre-wrap text-sm text-muted">{a.body}</p>

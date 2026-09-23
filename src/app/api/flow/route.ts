@@ -36,6 +36,7 @@ export async function GET() {
         name: c.name,
         publicKey: c.publicKey,
         hasToken,
+        enabled: c.enabled,
         allowedOrigins: cfg.allowedOrigins ?? [],
         snippet: formSnippet(c.publicKey),
         formUrl: `${appUrl()}/f/${c.publicKey}`,

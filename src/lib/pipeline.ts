@@ -2,7 +2,15 @@ import { prisma } from "./prisma";
 import { asConfig } from "./workspace";
 import { parseBinding, runModel } from "./ai";
 import { validateField } from "./validators";
-import { defaultGreeting, isStartCommand, sanitizeModelText, wantsManager } from "./dialog";
+import {
+  AI_DRAFT_LIMIT,
+  defaultGreeting,
+  extractPhone,
+  isStartCommand,
+  pickKnowledge,
+  sanitizeModelText,
+  wantsManager,
+} from "./dialog";
 
 export type IngestInput = {
   workspaceId: string;
@@ -43,7 +51,7 @@ async function pickAssignee(workspaceId: string): Promise<string> {
 async function markUrgent(opts: {
   conversationId: string;
   leadId?: string | null;
-  reason: "default_model" | "ai_error" | "handoff";
+  reason: "default_model" | "ai_error" | "handoff" | "ai_limit";
   assigneeId: string;
 }) {
   const conv = await prisma.conversation.findUnique({ where: { id: opts.conversationId } });
@@ -209,6 +217,11 @@ async function sessionHistory(conversationId: string) {
 }
 
 export async function ingestInbound(input: IngestInput) {
+  if (!input.phone) {
+    const found = extractPhone(input.body);
+    if (found) input.phone = found;
+  }
+
   if (input.eventKey) {
     try {
       await prisma.channelEvent.create({
@@ -236,10 +249,13 @@ export async function ingestInbound(input: IngestInput) {
   );
   const needsWatch = processes.some((p) => !p.explicit);
   const handoff = wantsManager(input.body);
-  const articles = await prisma.knowledgeArticle.findMany({
-    where: { workspaceId: input.workspaceId },
-    orderBy: { createdAt: "asc" },
-  });
+  const articles = pickKnowledge(
+    await prisma.knowledgeArticle.findMany({
+      where: { workspaceId: input.workspaceId, enabled: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    input.body,
+  );
 
   const contact = await findOrCreateContact(input);
   let conversation = await prisma.conversation.findFirst({
@@ -291,7 +307,7 @@ export async function ingestInbound(input: IngestInput) {
     });
     await prisma.conversation.update({
       where: { id: conversation.id },
-      data: { unread: true, urgent: false, urgentReason: null, aiError: null },
+      data: { unread: true, urgent: false, urgentReason: null, aiError: null, status: "ai" },
     });
     return {
       contactId: contact.id,
@@ -303,8 +319,12 @@ export async function ingestInbound(input: IngestInput) {
     };
   }
 
-  let assigneeId: string | null = null;
-  if (needsWatch) {
+  conversation = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+  let humanOwns = conversation.status === "manager" || conversation.status === "closed";
+  const closed = conversation.status === "closed";
+
+  let assigneeId: string | null = conversation.assigneeId;
+  if (needsWatch && !humanOwns) {
     assigneeId = await pickAssignee(input.workspaceId);
     await markUrgent({
       conversationId: conversation.id,
@@ -328,12 +348,17 @@ export async function ingestInbound(input: IngestInput) {
         body: "Клиент просит человека. Диалог в очереди менеджера.",
       },
     });
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { status: "manager", assigneeId },
+    });
+    humanOwns = true;
   }
 
   const history = await sessionHistory(conversation.id);
   const parse = processes.find((p) => p.type === "parse_inbound");
   let parsed: { name?: string; phone?: string; summary?: string; fields?: Record<string, string> } = {};
-  if (parse) {
+  if (parse && !closed) {
     const binding = parse.explicit ?? parse.fallback ?? { provider: "mock", model: "ok" };
     try {
       const system = withKnowledge(
@@ -429,7 +454,7 @@ export async function ingestInbound(input: IngestInput) {
   await upsertFields(input.workspaceId, contact.id, leadId, fieldBag);
 
   const draft = processes.find((p) => p.type === "draft_reply");
-  if (draft) {
+  if (draft && !humanOwns) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
       const system = withKnowledge(
@@ -452,6 +477,26 @@ export async function ingestInbound(input: IngestInput) {
         },
       });
       await prisma.flowBlock.update({ where: { id: draft.blockId }, data: { lastError: null } });
+      const reset = await prisma.message.findFirst({
+        where: { conversationId: conversation.id, direction: "system", body: { startsWith: "Сессия сброшена" } },
+        orderBy: { createdAt: "desc" },
+      });
+      const drafts = await prisma.message.count({
+        where: {
+          conversationId: conversation.id,
+          direction: "draft",
+          ...(reset ? { createdAt: { gt: reset.createdAt } } : {}),
+        },
+      });
+      if (drafts >= AI_DRAFT_LIMIT) {
+        assigneeId = assigneeId ?? (await pickAssignee(input.workspaceId));
+        await markUrgent({
+          conversationId: conversation.id,
+          leadId,
+          reason: "ai_limit",
+          assigneeId,
+        });
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка модели";
       await prisma.flowBlock.update({ where: { id: draft.blockId }, data: { lastError: msg } });
@@ -472,7 +517,7 @@ export async function ingestInbound(input: IngestInput) {
   }
 
   const deep = processes.find((p) => p.type === "deep_analysis");
-  if (deep && (deep.explicit || deep.fallback)) {
+  if (!humanOwns && deep && (deep.explicit || deep.fallback)) {
     const binding = deep.explicit ?? deep.fallback;
     if (binding) {
       try {

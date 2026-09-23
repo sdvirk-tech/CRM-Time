@@ -12,6 +12,7 @@ type Channel = {
   formUrl: string;
   webhookUrl: string;
   hasToken: boolean;
+  enabled: boolean;
   allowedOrigins: string[];
 };
 type Process = {
@@ -101,6 +102,18 @@ export default function FlowPage() {
       body: JSON.stringify({ greeting: value }),
     });
     await load();
+  }
+
+  async function pingModel() {
+    const raw = data?.defaultModel || "mock:ok";
+    const [provider, ...rest] = raw.split(":");
+    const res = await fetch("/api/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, model: rest.join(":") || "ok" }),
+    });
+    const json = await res.json();
+    setNotice(res.ok ? `Модель отвечает: ${json.preview}` : json.error || "Модель не ответила");
   }
 
   const preview = useMemo(() => {
@@ -230,6 +243,14 @@ export default function FlowPage() {
                 </select>
               </label>
             )}
+            {owner && (
+              <button type="button" onClick={pingModel} className="mt-3 rounded bg-accent px-4 py-2 text-sm text-ink">
+                Проверить запуск модели
+              </button>
+            )}
+            {notice && tab === "models" && /отвечает|ок/i.test(notice) && (
+              <p className="ok-banner mt-3 inline-block rounded px-3 py-2 text-sm">{notice}</p>
+            )}
             <table className="mt-6 w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-line bg-mist text-left text-ink">
@@ -297,6 +318,7 @@ function Sheet({
 }) {
   const [token, setToken] = useState("");
   const [origins, setOrigins] = useState(channel?.allowedOrigins.join(", ") ?? "");
+  const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const [prompt, setPrompt] = useState(process?.prompt ?? "");
   const [modelVal, setModelVal] = useState(
     process?.binding ? `${process.binding.provider}:${process.binding.model}` : "",
@@ -316,6 +338,7 @@ function Sheet({
         allowedOrigins: origins
           ? origins.split(",").map((s) => s.trim()).filter(Boolean)
           : undefined,
+        enabled: channel ? enabled : undefined,
         prompt,
         provider: modelVal ? provider : "",
         model: modelVal ? model : "",
@@ -373,6 +396,13 @@ function Sheet({
             Закрыть
           </button>
         </div>
+
+        {channel && (
+          <label className="mt-6 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={!owner} />
+            Принимать входящие
+          </label>
+        )}
 
         {channel?.type === "web_form" && (
           <div className="mt-6 space-y-3 text-sm">

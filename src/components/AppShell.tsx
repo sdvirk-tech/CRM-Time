@@ -73,15 +73,68 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button onClick={logout} className="mt-10 text-sm text-muted underline">
           Выйти
         </button>
+        <PasswordBox />
       </aside>
       <div className="min-w-0">
         {urgent > 0 && (
           <Link href="/inbox?filter=urgent" className="block border-b border-urgent/40 bg-urgent/15 px-6 py-2 text-sm">
-            Срочно: {urgent} — дефолт модели, сбой AI или клиент просит человека. Открыть входящие.
+            Срочно: {urgent} — дефолт модели, сбой AI, лимит ИИ или клиент просит человека. Открыть входящие.
           </Link>
         )}
         {children}
       </div>
+    </div>
+  );
+}
+
+function PasswordBox() {
+  const [open, setOpen] = useState(false);
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [msg, setMsg] = useState("");
+
+  async function save() {
+    const res = await fetch("/api/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ current, next }),
+    });
+    const json = await res.json();
+    if (!res.ok) setMsg(json.error || "Ошибка");
+    else {
+      setMsg("Пароль обновлён");
+      setCurrent("");
+      setNext("");
+    }
+  }
+
+  return (
+    <div className="mt-4 text-sm">
+      <button type="button" className="text-muted underline" onClick={() => setOpen((v) => !v)}>
+        Сменить пароль
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <input
+            type="password"
+            className="w-full rounded border border-line bg-paper px-2 py-1"
+            placeholder="Текущий"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+          <input
+            type="password"
+            className="w-full rounded border border-line bg-paper px-2 py-1"
+            placeholder="Новый, от 8 символов"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+          />
+          <button type="button" onClick={save} className="rounded bg-accent px-3 py-1 text-ink">
+            Сохранить
+          </button>
+          {msg && <p className={msg.includes("обнов") ? "ok-banner rounded px-2 py-1" : "text-urgent"}>{msg}</p>}
+        </div>
+      )}
     </div>
   );
 }

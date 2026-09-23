@@ -18,6 +18,8 @@ export async function GET() {
       unread,
       items: items.map((i) => ({
         id: i.id,
+        status: i.status,
+        assigneeId: i.assigneeId,
         unread: i.unread,
         urgent: i.urgent,
         urgentReason: i.urgentReason,

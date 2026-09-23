@@ -21,6 +21,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         label: z.string().optional(),
         token: z.string().optional(),
         allowedOrigins: z.array(z.string()).optional(),
+        enabled: z.boolean().optional(),
         prompt: z.string().optional(),
         provider: z.string().nullable().optional(),
         model: z.string().nullable().optional(),
@@ -32,10 +33,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const cfg = asConfig(block.config);
 
     if (block.type === "channel" && cfg.channelId) {
-      const data: { name?: string; secretsEnc?: string; config?: object } = {};
+      const data: { name?: string; secretsEnc?: string; config?: object; enabled?: boolean } = {};
       if (parsed.data.label) data.name = parsed.data.label;
       if (parsed.data.token) data.secretsEnc = encryptSecret(parsed.data.token.trim());
       if (parsed.data.allowedOrigins) data.config = { allowedOrigins: parsed.data.allowedOrigins };
+      if (parsed.data.enabled !== undefined) data.enabled = parsed.data.enabled;
       if (Object.keys(data).length) {
         await prisma.channel.update({ where: { id: cfg.channelId }, data });
       }

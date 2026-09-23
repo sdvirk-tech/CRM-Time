@@ -17,6 +17,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       .object({
         title: z.string().min(2).optional(),
         body: z.string().min(2).optional(),
+        enabled: z.boolean().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");

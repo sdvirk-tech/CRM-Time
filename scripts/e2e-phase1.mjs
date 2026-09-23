@@ -295,6 +295,76 @@ async function main() {
   r = await req("/api/leads", { cookie: mgrCookie });
   assert(r.status === 200 && r.data.items.length > 0, "manager sees leads");
 
+  const phoneChat = "tg-phone-" + id;
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: phoneChat, text: "перезвоните 79994445566, нужен FCA", name: "Телефон" },
+  });
+  assert(r.status === 200, "phone extract ingest");
+  const inboxPhone = await req("/api/inbox", { cookie });
+  const phoneItem = inboxPhone.data.items.find((i) => i.contact.name === "Телефон");
+  assert(phoneItem, "phone conversation");
+  assert(phoneItem.contact.phone === "79994445566", "phone extracted from telegram text");
+
+  const convPhone = await req(`/api/conversations/${phoneItem.id}`, { cookie });
+  const draftsBeforeTake = (convPhone.data.messages || []).filter((m) => m.direction === "draft").length;
+  r = await req(`/api/conversations/${phoneItem.id}`, { method: "PATCH", cookie, json: { action: "take" } });
+  assert(r.status === 200 && r.data.conversation.status === "manager", "take conversation");
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: phoneChat, text: "ещё одно сообщение после взять", name: "Телефон" },
+  });
+  assert(r.status === 200, "inbound after take");
+  const convTaken = await req(`/api/conversations/${phoneItem.id}`, { cookie });
+  const draftsAfterTake = (convTaken.data.messages || []).filter((m) => m.direction === "draft").length;
+  assert(draftsAfterTake === draftsBeforeTake, "no new AI draft after take");
+
+  r = await req(`/api/conversations/${phoneItem.id}`, { method: "PATCH", cookie, json: { action: "close" } });
+  assert(r.status === 200 && r.data.conversation.status === "closed", "close conversation");
+  r = await req(`/api/conversations/${phoneItem.id}`, { method: "PATCH", cookie, json: { action: "reset" } });
+  assert(r.status === 200 && r.data.conversation.status === "ai" && r.data.reset === true, "reset conversation");
+
+  const arts = await req("/api/knowledge", { cookie });
+  const allArts = arts.data.articles || [];
+  assert(allArts.length >= 1, "seed article");
+  for (const a of allArts) {
+    r = await req(`/api/knowledge/${a.id}`, { method: "PATCH", cookie, json: { enabled: false } });
+    assert(r.status === 200 && r.data.article.enabled === false, "disable knowledge");
+  }
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: "tg-noknow-" + id, text: "просто привет без методики", name: "БезЗнаний" },
+  });
+  assert(r.status === 200, "simulate without knowledge");
+  const inboxNk = await req("/api/inbox", { cookie });
+  const nk = inboxNk.data.items.find((i) => i.contact.name === "БезЗнаний");
+  assert(nk, "conversation without knowledge");
+  const convNk = await req(`/api/conversations/${nk.id}`, { cookie });
+  const nkDraft = [...convNk.data.messages].reverse().find((m) => m.direction === "draft");
+  assert(nkDraft && !String(nkDraft.body).includes("По методике"), "disabled article is not stuffed");
+  for (const a of allArts) {
+    r = await req(`/api/knowledge/${a.id}`, { method: "PATCH", cookie, json: { enabled: true } });
+    assert(r.status === 200 && r.data.article.enabled === true, "re-enable knowledge");
+  }
+
+  r = await req(`/api/flow/blocks/${formBlock.id}`, { method: "PATCH", cookie, json: { enabled: false } });
+  assert(r.status === 200, "disable web form channel");
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Выкл", phone: "79990001122", tnved: "0101210000" },
+  });
+  assert(r.status === 403, "disabled channel rejects ingest");
+  r = await req(`/api/flow/blocks/${formBlock.id}`, { method: "PATCH", cookie, json: { enabled: true } });
+  assert(r.status === 200, "re-enable channel");
+
+  r = await req("/api/models", { method: "POST", cookie, json: { provider: "mock", model: "ok" } });
+  assert(r.status === 200 && r.data.ok === true, "model ping ok");
+  r = await req("/api/auth/password", { method: "POST", cookie, json: { current: "secret12", next: "secret12" } });
+  assert(r.status === 200 && r.data.ok === true, "change password");
+
   const deep = await req("/api/models", { cookie });
   assert(deep.data.deepAnalysisEnabled === false || typeof deep.data.deepAnalysisEnabled === "boolean", "deep flag");
 

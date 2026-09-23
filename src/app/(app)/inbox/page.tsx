@@ -8,6 +8,7 @@ type Item = {
   unread: boolean;
   urgent: boolean;
   urgentReason: string | null;
+  status: string;
   aiError: string | null;
   contact: { id: string; name: string; phone: string | null };
   channel: { type: string; name: string };
@@ -20,6 +21,7 @@ export default function InboxPage() {
   const [unread, setUnread] = useState(0);
   const [filter, setFilter] = useState<"all" | "unread" | "urgent">("all");
   const [channel, setChannel] = useState<"all" | "web_form" | "telegram">("all");
+  const [status, setStatus] = useState<"all" | "ai" | "manager" | "closed">("all");
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search).get("filter");
@@ -37,9 +39,10 @@ export default function InboxPage() {
       if (filter === "unread" && !i.unread) return false;
       if (filter === "urgent" && !i.urgent) return false;
       if (channel !== "all" && i.channel.type !== channel) return false;
+      if (status !== "all" && i.status !== status) return false;
       return true;
     });
-  }, [items, filter, channel]);
+  }, [items, filter, channel, status]);
 
   return (
     <main className="p-8">
@@ -57,6 +60,11 @@ export default function InboxPage() {
             {c === "all" ? "все каналы" : c === "web_form" ? "сайт" : "Telegram"}
           </button>
         ))}
+        {(["all", "ai", "manager", "closed"] as const).map((s) => (
+          <button key={s} className={status === s ? "chip chip-on" : "chip"} onClick={() => setStatus(s)}>
+            {s === "all" ? "все статусы" : s === "ai" ? "ИИ" : s === "manager" ? "менеджер" : "закрыто"}
+          </button>
+        ))}
       </div>
       <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-accent bg-paper">
         {visible.length === 0 && <li className="p-6 text-muted">Нет заявок в этом фильтре.</li>}
@@ -71,7 +79,10 @@ export default function InboxPage() {
                 <p className="mt-1 line-clamp-2 text-sm text-muted">{item.lastMessage}</p>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1">
-                <span className="rounded border border-line px-2 py-0.5 text-xs">{item.channel.type === "web_form" ? "сайт" : "Telegram"}</span>
+                <span className="rounded border border-line px-2 py-0.5 text-xs">
+                  {item.channel.type === "web_form" ? "сайт" : "Telegram"}
+                  {item.status === "manager" ? " · менеджер" : item.status === "closed" ? " · закрыто" : ""}
+                </span>
                 {item.urgent && <span className="urgent-badge">срочно</span>}
               </div>
             </Link>

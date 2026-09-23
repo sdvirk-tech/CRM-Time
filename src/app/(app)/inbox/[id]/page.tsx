@@ -9,6 +9,7 @@ type Data = {
   id: string;
   urgent: boolean;
   urgentReason: string | null;
+  status: string;
   aiError: string | null;
   contact: { id: string; name: string; phone: string | null; leads: { id: string }[] };
   channel: { type: string; name: string };
@@ -57,6 +58,28 @@ export default function ConversationPage() {
     await load();
   }
 
+  async function act(action: "take" | "reset" | "close" | "ai") {
+    const res = await fetch(`/api/conversations/${params.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    const json = await res.json();
+    if (!res.ok) setMsg(json.error);
+    else {
+      setMsg(
+        action === "take"
+          ? "Взяли в работу, ИИ молчит"
+          : action === "reset"
+            ? "Сессия сброшена, клиенту ничего не ушло"
+            : action === "close"
+              ? "Диалог закрыт"
+              : "Вернули ИИ",
+      );
+    }
+    await load();
+  }
+
   if (!data?.id) return <div className="p-8 text-muted">Загрузка…</div>;
   const draft = [...data.messages].reverse().find((m) => m.direction === "draft");
 
@@ -72,6 +95,9 @@ export default function ConversationPage() {
           {data.urgentReason === "default_model" && " · дефолт модели — человек в контуре"}
           {data.urgentReason === "ai_error" && " · сбой модели"}
           {data.urgentReason === "handoff" && " · клиент просит человека"}
+          {data.urgentReason === "ai_limit" && " · лимит черновиков ИИ"}
+          {data.status === "manager" && " · у менеджера"}
+          {data.status === "closed" && " · закрыто"}
         </p>
         {data.aiError && <p className="mt-3 rounded border border-urgent/40 bg-urgent/15 p-3 text-sm">{data.aiError}</p>}
         <ol className="mt-6 space-y-3">
@@ -128,6 +154,26 @@ export default function ConversationPage() {
         <button onClick={createLead} className="mt-6 w-full rounded-xl bg-accent px-4 py-2 text-ink">
           Создать лид
         </button>
+        <div className="mt-4 grid gap-2">
+          {data.status !== "manager" && (
+            <button onClick={() => act("take")} className="rounded border border-accent bg-mist px-4 py-2 text-sm">
+              Взять
+            </button>
+          )}
+          {data.status === "manager" && (
+            <button onClick={() => act("ai")} className="rounded border border-line px-4 py-2 text-sm">
+              Вернуть ИИ
+            </button>
+          )}
+          <button onClick={() => act("reset")} className="rounded border border-line px-4 py-2 text-sm">
+            Сбросить сессию
+          </button>
+          {data.status !== "closed" && (
+            <button onClick={() => act("close")} className="rounded border border-line px-4 py-2 text-sm">
+              Закрыть
+            </button>
+          )}
+        </div>
         {data.contact.leads[0] && (
           <Link className="mt-3 block text-sm underline" href={`/leads/${data.contact.leads[0].id}`}>
             К лиду

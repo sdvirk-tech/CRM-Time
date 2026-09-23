@@ -10,6 +10,7 @@ export async function POST(req: Request, ctx: Ctx) {
   const { key } = await ctx.params;
   const channel = await prisma.channel.findUnique({ where: { publicKey: key } });
   if (!channel || channel.type !== "telegram") return jsonError("Канал не найден", 404);
+  if (!channel.enabled) return jsonError("Канал выключен", 403);
 
   const update = (await req.json().catch(() => null)) as {
     update_id?: number;
