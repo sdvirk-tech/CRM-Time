@@ -13,7 +13,10 @@ export function MergeDuplicates({ items }: { items: Dup[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   if (!items?.length) return null;
 
-  async function merge(otherId: string) {
+  async function merge(otherId: string, name: string) {
+    if (!window.confirm(`Склеить «${name}» с этой карточкой? Диалоги и лиды переедут сюда, вторая карточка удалится.`)) {
+      return;
+    }
     setBusy(otherId);
     setMsg("");
     const res = await fetch(`/api/contacts/${params.id}/merge`, {
@@ -51,7 +54,7 @@ export function MergeDuplicates({ items }: { items: Dup[] }) {
             <button
               type="button"
               disabled={busy === d.id}
-              onClick={() => merge(d.id)}
+              onClick={() => merge(d.id, d.name)}
               className="rounded-xl bg-accent px-3 py-1 text-ink"
             >
               Склеить

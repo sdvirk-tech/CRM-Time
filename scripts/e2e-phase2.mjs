@@ -622,6 +622,7 @@ async function main() {
   assert(found.status === 200, "search");
   assert((found.data.contacts || []).some((c) => c.title === "Клиент RR1"), "search contact by name");
   assert((found.data.leads || []).some((l) => l.title === "Клиент RR1"), "search lead by name");
+  assert((found.data.conversations || []).some((c) => c.title === "Клиент RR1"), "search conversation by name");
   const byPhone = await req(`/api/search?q=${phone1}`, { cookie });
   assert((byPhone.data.contacts || []).some((c) => c.href.includes(form1.data.contactId)), "search by phone");
 

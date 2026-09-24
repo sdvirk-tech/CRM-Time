@@ -220,7 +220,8 @@ async function main() {
   const contactA = r.data.contactId;
 
   const contactCard = await req(`/api/contacts/${contactA}`, { cookie });
-  assert(contactCard.status === 200 && contactCard.data.id === contactA, "contact card");
+  assert(contactCard.status === 200 && contactCard.data.id === contactA, "contact card: " + JSON.stringify(contactCard.data?.error || contactCard.status));
+  assert(Array.isArray(contactCard.data.duplicates), "contact duplicates field");
   assert((contactCard.data.channels || []).length >= 1, "contact channels");
   assert((contactCard.data.leads || []).some((l) => l.id === leadA), "contact leads");
   assert((contactCard.data.conversations || []).length >= 1, "contact conversations");
