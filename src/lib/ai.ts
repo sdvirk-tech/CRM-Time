@@ -1,4 +1,4 @@
-import { extractCargoFromText, formatItogo, isCardComplete, nextAsk, missingCardSlots } from "./sales";
+import { extractCargoFromText, formatCommercialDraft, isCardComplete, nextAsk, missingCardSlots } from "./sales";
 import { env } from "./env";
 import { sanitizeModelText } from "./dialog";
 
@@ -173,6 +173,10 @@ export async function runModel(opts: {
     const tag = isB ? "модель B. " : "";
     const sales = /Ты МАКС|код ТН ВЭД|карточка/i.test(opts.system);
     if (sales) {
+      if (opts.system.includes("COMMERCIAL_DRAFT=1") || /карточка собрана/i.test(opts.system)) {
+        const cargo = extractCargoFromText(opts.user);
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${formatCommercialDraft(cargo)}`);
+      }
       const byCardAsk = opts.system.match(/Спроси следующее одним предложением:\s*([^\n]+)/);
       if (byCardAsk && /Нет:/.test(opts.system) && !/Всё собрано/.test(opts.system)) {
         return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${byCardAsk[1]}`);
@@ -180,7 +184,7 @@ export async function runModel(opts: {
       const cargo = extractCargoFromText(opts.user);
       const missing = missingCardSlots(cargo);
       if (/Всё собрано/.test(opts.system) || missing.length === 0) {
-        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${formatItogo(cargo)}`);
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${formatCommercialDraft(cargo)}`);
       }
       if (!cargo.cargo && !cargo.weight && !cargo.route && missing.includes("cargo")) {
         return sanitizeModelText(

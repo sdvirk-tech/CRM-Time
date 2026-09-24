@@ -13,6 +13,7 @@ import {
   normalizeRoute,
   snapshotFromBag,
   withCardState,
+  withCommercialDraft,
 } from "./sales";
 import { defaultProcessPrompt } from "./workspace";
 import { deliverOutbound } from "./outbound";
@@ -575,11 +576,13 @@ export async function ingestInbound(input: IngestInput) {
   if (draft && !humanOwns) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
-      const system = withCardState(
-        withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles),
-        snap,
-        missing,
-      );
+      const system = cardComplete
+        ? withCommercialDraft(withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles), snap)
+        : withCardState(
+            withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles),
+            snap,
+            missing,
+          );
       const text = await runModel({
         provider: binding.provider,
         model: binding.model,
@@ -594,11 +597,31 @@ export async function ingestInbound(input: IngestInput) {
           body: text,
         },
       });
+      if (cardComplete) {
+        const noted = await prisma.message.findFirst({
+          where: {
+            conversationId: conversation.id,
+            direction: "system",
+            body: { startsWith: "Карточка заполнена" },
+          },
+        });
+        if (!noted) {
+          await prisma.message.create({
+            data: {
+              workspaceId: input.workspaceId,
+              conversationId: conversation.id,
+              direction: "system",
+              body: "Карточка заполнена. Лид «Новый». Коммерческий ответ — черновик, уйдёт после «Отправить».",
+            },
+          });
+        }
+      }
       const botMayTalk =
         draft.explicit &&
         !needsWatch &&
         !humanOwns &&
         !handoff &&
+        !cardComplete &&
         (input.source === "web_chat" || input.source === "telegram");
       if (botMayTalk) {
         const convFull = await prisma.conversation.findFirst({

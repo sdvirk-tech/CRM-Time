@@ -626,9 +626,18 @@ async function main() {
   assert(/https?:\/\//.test(missMap.cargo || "") && /фото/i.test(missMap.cargo || ""), "link+photo in cargo");
   const missPoll2 = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=${missSid}`);
   assert(
-    (missPoll2.data.messages || []).some((m) => m.direction === "outbound" && /Итоговые данные/i.test(m.body)),
-    "итоговые данные after full card",
+    !(missPoll2.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта|Черновик менеджеру/i.test(m.body)),
+    "commercial draft is not auto-sent after card",
   );
+  const missConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const missDraft = [...(missConv.data.messages || [])].reverse().find((m) => m.direction === "draft");
+  assert(missDraft && /100% фрахта|НДС|курс/i.test(missDraft.body), "post-card commercial draft " + missDraft?.body);
+  assert(
+    (missConv.data.messages || []).some((m) => m.direction === "system" && /Карточка заполнена/i.test(m.body)),
+    "system note card filled",
+  );
+  assert((missConv.data.contact.fieldValues || []).some((v) => v.field.key === "route" && v.value === "АВИА"), "inbox card has route");
+  assert(missConv.data.leads?.[0]?.status === "new", "inbox lead Новый");
 
   r = await req(`/api/channels/${tgCh.id}/simulate`, {
     method: "POST",
@@ -686,9 +695,39 @@ async function main() {
   }
   const cargoChatPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-cargo-${id}`);
   assert(
-    (cargoChatPoll.data.messages || []).some((m) => m.direction === "outbound" && /Итоговые данные/i.test(m.body)),
-    "sales bot writes итоговые данные when card is full",
+    !(cargoChatPoll.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта|Черновик менеджеру/i.test(m.body)),
+    "explicit model does not auto-send post-card commercial reply",
   );
+  const cargoConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const cargoDraft = [...(cargoConv.data.messages || [])].reverse().find((m) => m.direction === "draft");
+  assert(cargoDraft && /100% фрахта в ТС/i.test(cargoDraft.body), "АВИА duty hint in manager draft");
+  assert(/Итоговые данные/i.test(cargoDraft.body), "draft lists итоговые данные for manager");
+  assert((cargoConv.data.contact.fieldValues || []).some((v) => v.field.key === "weight" && /12/.test(v.value)), "inbox shows filled card");
+  const inboxCard = await req("/api/inbox", { cookie });
+  assert(
+    (inboxCard.data.items || []).some((i) => i.id === r.data.conversationId && i.cardReady === true),
+    "inbox flags card ready",
+  );
+  const commercial = cargoDraft.body;
+  r = await req(`/api/conversations/${cargoConv.data.id}`, {
+    method: "POST",
+    cookie,
+    json: { text: commercial, send: true },
+  });
+  assert(r.status === 200 && r.data.sent === true, "manager sends commercial to widget");
+  const cargoChatSent = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-cargo-${id}`);
+  assert(
+    (cargoChatSent.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта в ТС/i.test(m.body)),
+    "widget received manager send",
+  );
+  const cargoLeadAfter = await req(`/api/leads/${cargoLead.data.id}`, { cookie });
+  assert(cargoLeadAfter.data.conversation?.id === cargoConv.data.id, "conversation stays on lead after send");
+  r = await req(`/api/conversations/${cargoConv.data.id}`, {
+    method: "POST",
+    cookie,
+    json: { text: "Допишу из CRM: жду курс.", send: true },
+  });
+  assert(r.status === 200 && r.data.sent === true, "manager keeps chatting from CRM");
 
   r = await req(`/api/channels/${tgCh.id}/simulate`, {
     method: "POST",
@@ -706,9 +745,22 @@ async function main() {
   });
   assert(r.status === 200 && r.data.leadId, "telegram cargo creates lead");
   const tgCargoConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const tgDraft = [...(tgCargoConv.data.messages || [])].reverse().find((m) => m.direction === "draft");
+  assert(tgDraft && /100% фрахта|НДС|курс/i.test(tgDraft.body), "telegram post-card draft for manager");
   assert(
-    (tgCargoConv.data.messages || []).some((m) => m.direction === "outbound"),
-    "explicit telegram cargo bot replies",
+    !(tgCargoConv.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта/i.test(m.body)),
+    "telegram does not auto-send commercial after card",
+  );
+  r = await req(`/api/conversations/${tgCargoConv.data.id}`, {
+    method: "POST",
+    cookie,
+    json: { text: tgDraft.body, send: true },
+  });
+  assert(r.status === 200 && r.data.sent === true, "manager send to telegram conversation");
+  const tgAfterSend = await req(`/api/conversations/${tgCargoConv.data.id}`, { cookie });
+  assert(
+    (tgAfterSend.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта/i.test(m.body)),
+    "telegram outbound after manager send",
   );
   const tgCargoContact = await req(`/api/contacts/${r.data.contactId}`, { cookie });
   const tgCargoMap = Object.fromEntries(
@@ -769,6 +821,10 @@ async function main() {
   assert(
     (inboxStale.data.items || []).some((i) => i.stale === true),
     "unanswered conversation flagged stale",
+  );
+  assert(
+    (inboxStale.data.items || []).some((i) => i.id === cargoConv.data.id && i.stale === true),
+    "after manager send, silent client is завис",
   );
   r = await req("/api/workspace", { method: "PATCH", cookie, json: { slaMinutes: 15 } });
   assert(r.status === 200 && r.data.slaMinutes === 15, "sla restored");

@@ -329,10 +329,31 @@ export function snapshotFromBag(bag: Record<string, string>, name?: string | nul
 
 export function withCardState(base: string, snap: CargoExtract, missing: string[]) {
   if (!missing.length) {
-    return `${base}\n\n--- карточка ---\nВсё собрано. Напиши «Итоговые данные» обычным текстом и перечисли поля. Без JSON клиенту.\n`;
+    return withCommercialDraft(base, snap);
   }
   const filled = CARD_CORE.filter((k) => snap[k] && (k !== "name" || !isGenericName(String(snap[k]))))
     .map((k) => `${k}=${snap[k]}`)
     .join(", ");
   return `${base}\n\n--- карточка ---\nЕсть: ${filled || "пока ничего"}\nНет: ${missing.join(", ")}\nСпроси следующее одним предложением: ${nextAsk(missing)}\nПустые поля не записывай. Без JSON.\n`;
 }
+
+export function withCommercialDraft(base: string, snap: CargoExtract) {
+  return `${base}\n\nCOMMERCIAL_DRAFT=1\n--- карточка собрана ---\n${formatItogo(snap)}\nНапиши черновик менеджеру: ориентир по маршруту ${snap.route || "—"} и намётки ТС/пошлины из знаний (авиа — 100% фрахта в ТС, море/ЖД — 50%, НДС 22%). Без рублей и итога, пока нет курса. Без JSON. Клиенту уйдёт только после кнопки «Отправить».\n`;
+}
+
+export function formatCommercialDraft(snap: Partial<CargoExtract>): string {
+  const route = snap.route || "";
+  let hint = "Курс ЦБ или число клиента — без него в чат не ставлю ТС, пошлину и итог.";
+  if (route === "АВИА") hint = "Авиа до аэропорта РФ: 100% фрахта в ТС. " + hint;
+  else if (route === "МОРЕ" || route === "ЖД") hint = "Море/ЖД одной вилкой: 50% фрахта в ТС. " + hint;
+  else if (route === "АВТО") hint = "Авто до города: ориентир без СВХ. " + hint;
+  else if (route === "СБОРКА") hint = "Сборка LCL: RT = max(т; м³). " + hint;
+  return [
+    "Черновик менеджеру — уйдёт клиенту после «Отправить».",
+    formatItogo(snap),
+    "",
+    hint,
+    "НДС 22% с ТС+пошлина. Сбор от ТС по шкале. Не оферта.",
+  ].join("\n");
+}
+

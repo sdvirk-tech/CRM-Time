@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { channelLabel } from "@/lib/labels";
+import { channelLabel, leadStatusLabel } from "@/lib/labels";
+import { CargoCard } from "@/components/CargoCard";
 
 type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
 type Operator = { userId: string; name: string; role: string };
+type FieldVal = { value: string; field: { key: string; name: string } };
 type Data = {
   id: string;
   urgent: boolean;
@@ -15,9 +17,16 @@ type Data = {
   aiError: string | null;
   assignee?: { id: string; name: string } | null;
   operators?: Operator[];
-  contact: { id: string; name: string; phone: string | null; leads: { id: string }[] };
+  contact: {
+    id: string;
+    name: string;
+    phone: string | null;
+    leads: { id: string }[];
+    fieldValues?: FieldVal[];
+  };
   channel: { type: string; name: string };
   messages: Msg[];
+  leads?: { id: string; status: string }[];
 };
 
 export default function ConversationPage() {
@@ -85,6 +94,9 @@ export default function ConversationPage() {
   if (!data?.id) return <div className="p-8 text-muted">Загрузка…</div>;
   const draft = [...data.messages].reverse().find((m) => m.direction === "draft");
   const others = (data.operators ?? []).filter((o) => o.userId !== data.assignee?.id);
+  const leadId = data.leads?.[0]?.id || data.contact.leads[0]?.id;
+  const leadStatus = data.leads?.[0]?.status || "new";
+  const cardValues = data.contact.fieldValues ?? [];
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[1fr_280px]">
@@ -105,6 +117,18 @@ export default function ConversationPage() {
         </p>
         {msg && <p className="ok-banner mt-3 inline-block rounded px-2 py-1 text-sm">{msg}</p>}
         {data.aiError && <p className="mt-3 rounded border border-urgent/40 bg-urgent/15 p-3 text-sm">{data.aiError}</p>}
+        {cardValues.length > 0 && (
+          <CargoCard name={data.contact.name} phone={data.contact.phone} values={cardValues} />
+        )}
+        {leadId && (
+          <p className="mt-2 text-sm">
+            Лид{" "}
+            <Link className="link" href={`/leads/${leadId}`}>
+              {leadStatusLabel(leadStatus)}
+            </Link>
+            {" · "}диалог привязан, писать можно здесь
+          </p>
+        )}
         <ol className="mt-6 space-y-3">
           {data.messages.map((m) => (
             <li
@@ -148,9 +172,11 @@ export default function ConversationPage() {
           </div>
           {draft && (
             <p className="text-xs text-muted">
-              {data.channel.type === "web_chat"
-                ? "В чате на сайте ответ виден, если модель явная. Иначе — после «Отправить»."
-                : "Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить»."}
+              {cardValues.length
+                ? "Коммерческий черновик по карточке. В чат сайта и Telegram уйдёт только после «Отправить»."
+                : data.channel.type === "web_chat"
+                  ? "Пока карточка собирается, явная модель может отвечать в чате. Коммерческий ответ после карточки — кнопкой «Отправить»."
+                  : "Черновик модели уже подставлен. В Telegram уйдёт только после «Отправить»."}
             </p>
           )}
         </form>

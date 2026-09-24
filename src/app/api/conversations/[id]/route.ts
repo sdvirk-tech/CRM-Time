@@ -18,6 +18,7 @@ export async function GET(_req: Request, ctx: Ctx) {
         channel: true,
         assignee: { select: { id: true, name: true } },
         messages: { orderBy: { createdAt: "asc" } },
+        leads: { select: { id: true, status: true } },
       },
     });
     if (!conv) return jsonError("Диалог не найден", 404);

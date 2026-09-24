@@ -13,6 +13,7 @@ export async function GET() {
       include: {
         contact: true,
         channel: true,
+        leads: { select: { id: true, status: true } },
         messages: { orderBy: { createdAt: "desc" }, take: 12 },
       },
     });
@@ -34,6 +35,9 @@ export async function GET() {
         urgentReason: i.urgentReason,
         stale,
         aiError: i.aiError,
+        cardReady: i.leads.length > 0,
+        leadId: i.leads[0]?.id ?? null,
+        leadStatus: i.leads[0]?.status ?? null,
         contact: { id: i.contact.id, name: i.contact.name, phone: i.contact.phone },
         channel: { type: i.channel.type, name: i.channel.name },
         lastMessage: i.messages[0]?.body ?? "",

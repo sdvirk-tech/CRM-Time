@@ -6,12 +6,20 @@ export function isStale(opts: {
   now?: Date;
 }) {
   if (opts.status === "closed") return false;
-  if (!opts.lastInboundAt) return false;
-  if (opts.lastOutboundAt && opts.lastOutboundAt >= opts.lastInboundAt) return false;
   const now = opts.now ?? new Date();
-  const waited = now.getTime() - opts.lastInboundAt.getTime();
   const limit = Math.max(0, opts.slaMinutes) * 60 * 1000;
-  return waited >= limit;
+  const lastIn = opts.lastInboundAt ? new Date(opts.lastInboundAt).getTime() : null;
+  const lastOut = opts.lastOutboundAt ? new Date(opts.lastOutboundAt).getTime() : null;
+  if (lastIn == null && lastOut == null) return false;
+  // Client wrote last — waiting for us.
+  if (lastIn != null && (lastOut == null || lastIn > lastOut)) {
+    return now.getTime() - lastIn >= limit;
+  }
+  // We wrote last (manager send or bot) — client silent, cheap follow-up.
+  if (lastOut != null && (lastIn == null || lastOut >= lastIn)) {
+    return now.getTime() - lastOut >= limit;
+  }
+  return false;
 }
 
 export function startOfToday(now = new Date()) {
