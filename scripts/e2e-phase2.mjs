@@ -777,8 +777,8 @@ async function main() {
   const backNew = await req(`/api/leads/${form1.data.leadId}`, { method: "PATCH", cookie, json: { status: "in_progress" } });
   assert(backNew.status === 200, "lead back after reject");
 
-  const team = await req("/api/team", { cookie });
-  const ownerId = (team.data.members || []).find((m) => m.role === "owner")?.userId;
+  const team8 = await req("/api/team", { cookie });
+  const ownerId = (team8.data.members || []).find((m) => m.role === "owner")?.userId;
   assert(ownerId, "owner member for task");
   const past = new Date(Date.now() - 3600_000).toISOString();
   const task = await req("/api/tasks", {
