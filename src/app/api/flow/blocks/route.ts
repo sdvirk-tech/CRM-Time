@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withOwner } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
-import { asConfig, ensureWorkspaceFlow, publicKey } from "@/lib/workspace";
+import { asConfig, bindVedTopic, defaultProcessPrompt, ensureWorkspaceFlow, publicKey } from "@/lib/workspace";
 import { z } from "zod";
 
 const schema = z.object({
@@ -52,6 +52,9 @@ export async function POST(req: Request) {
           config: { allowedOrigins: [] },
         },
       });
+      if (type === "telegram" || type === "web_chat") {
+        await bindVedTopic(ws, channel.id);
+      }
       const block = await prisma.flowBlock.create({
         data: {
           workspaceId: ws,
@@ -82,7 +85,7 @@ export async function POST(req: Request) {
           workspaceId: ws,
           type: processType,
           name: names[processType],
-          prompt: "",
+          prompt: defaultProcessPrompt(processType),
         },
       });
       const block = await prisma.flowBlock.create({

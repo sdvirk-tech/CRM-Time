@@ -24,6 +24,7 @@ export async function GET() {
       config: asConfig(b.config),
     }));
     const { preview, compact } = buildFlowPreview(blockPayload, processes);
+    const chatKey = channels.find((c) => c.type === "web_chat")?.publicKey;
     const channelPayload = channels.map((c) => {
       const cfg = (c.config ?? {}) as { allowedOrigins?: string[] };
       let hasToken = false;
@@ -53,7 +54,7 @@ export async function GET() {
           c.type === "web_chat"
             ? chatSnippet(c.publicKey)
             : c.type === "web_form"
-              ? formSnippet(c.publicKey)
+              ? formSnippet(c.publicKey, chatKey)
               : "",
         formUrl: `${publicUrl()}/f/${c.publicKey}`,
         chatUrl: `${publicUrl()}/c/${c.publicKey}`,
@@ -90,16 +91,15 @@ function chatSnippet(key: string) {
 <iframe src="${url}" title="Чат" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;border:1px solid #99CCFF;width:360px;height:480px"></iframe>`;
 }
 
-function formSnippet(key: string) {
+function formSnippet(key: string, chatKey?: string) {
   const url = `${publicUrl()}/api/ingest/web-form/${key}`;
-  return `<!-- CRM-Time widget -->
+  const chat = chatKey ? `${publicUrl()}/c/${chatKey}` : `${publicUrl()}/f/${key}`;
+  return `<!-- CRM-Time: имя и телефон, груз в чате -->
 <form action="${url}" method="POST" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;padding:16px;max-width:420px;border:1px solid #99CCFF">
-  <div style="background:#C5E2FF;color:#1a1a1a;padding:8px 12px;margin:-16px -16px 12px">Оставить заявку</div>
+  <div style="background:#C5E2FF;color:#1a1a1a;padding:8px 12px;margin:-16px -16px 12px">Имя и телефон</div>
   <input name="name" placeholder="Имя" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
   <input name="phone" placeholder="Телефон" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
-  <input name="tnved" placeholder="ТН ВЭД" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
-  <input name="incoterms" placeholder="Incoterms" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
-  <textarea name="comment" placeholder="Комментарий" style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a"></textarea>
-  <button type="submit" style="background:#99CCFF;color:#1a1a1a;border:0;padding:10px 16px;font-family:inherit">Отправить</button>
+  <button type="submit" style="background:#99CCFF;color:#1a1a1a;border:0;padding:10px 16px;font-family:inherit">Оставить контакт</button>
+  <p style="margin:12px 0 0;font-size:13px"><a href="${chat}" style="color:#1a1a1a">Написать в чат</a></p>
 </form>`;
 }

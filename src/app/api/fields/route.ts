@@ -20,7 +20,7 @@ export async function POST(req: Request) {
       .object({
         name: z.string().min(1),
         key: z.string().min(1).regex(/^[a-z0-9_]+$/),
-        fieldType: z.enum(["text", "phone", "tnved", "incoterms", "number", "container"]),
+        fieldType: z.enum(["text", "phone", "tnved", "incoterms", "number", "container", "route"]),
         required: z.boolean().optional(),
       })
       .safeParse(await req.json().catch(() => null));

@@ -13,7 +13,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
       .object({
         name: z.string().optional(),
         required: z.boolean().optional(),
-        fieldType: z.enum(["text", "phone", "tnved", "incoterms", "number", "container"]).optional(),
+        fieldType: z.enum(["text", "phone", "tnved", "incoterms", "number", "container", "route"]).optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");

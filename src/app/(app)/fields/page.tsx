@@ -41,7 +41,9 @@ export default function FieldsPage() {
   return (
     <main className="p-8">
       <h1 className="text-3xl font-semibold">Поля клиента (ТТХ)</h1>
-      <p className="mt-2 max-w-xl text-muted">Валидаторы ВЭД: телефон, ТН ВЭД (10 цифр, глава 01–97 кроме 77), Incoterms, контейнер.</p>
+      <p className="mt-2 max-w-xl text-muted">
+        Карточка груза: имя, телефон, телеграм, Max, описание, вес, объём, отправка, прибытие, маршрут (АВИА / МОРЕ / ЖД / АВТО / СБОРКА), срок. ТН ВЭД — в чате, не формой.
+      </p>
       <ul className="mt-6 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-slot">
         {fields.map((f) => (
           <li key={f.id} className="flex items-center justify-between p-4">
@@ -57,14 +59,14 @@ export default function FieldsPage() {
       </ul>
       <form onSubmit={add} className="mt-8 grid max-w-xl gap-3">
         <input className="rounded-xl border border-line bg-slot px-3 py-2" placeholder="Имя поля" value={name} onChange={(e) => setName(e.target.value)} required />
-        <input className="rounded-xl border border-line bg-slot px-3 py-2" placeholder="ключ (tnved)" value={key} onChange={(e) => setKey(e.target.value)} required />
+        <input className="rounded-xl border border-line bg-slot px-3 py-2" placeholder="ключ (cargo)" value={key} onChange={(e) => setKey(e.target.value)} required />
         <select className="rounded-xl border border-line bg-slot px-3 py-2" value={fieldType} onChange={(e) => setFieldType(e.target.value)}>
           <option value="text">текст</option>
           <option value="phone">телефон</option>
           <option value="tnved">ТН ВЭД</option>
           <option value="incoterms">Incoterms</option>
           <option value="container">контейнер</option>
-          <option value="number">число</option>
+          <option value="route">маршрут (АВИА/МОРЕ/ЖД/АВТО/СБОРКА)</option>
         </select>
         <label className="text-sm">
           <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} className="mr-2" />

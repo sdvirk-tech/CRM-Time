@@ -1,3 +1,4 @@
+import { extractCargoFromText } from "./sales";
 import { env } from "./env";
 import { sanitizeModelText } from "./dialog";
 
@@ -136,18 +137,53 @@ export async function runModel(opts: {
   if (opts.provider === "mock") {
     if (opts.model === "fail") throw new Error("Искусственный сбой модели (mock:fail)");
     const isB = opts.model === "ok-b";
-    if (opts.system.includes("JSON")) {
+    if (opts.system.includes("ROLE=parse_cargo_json")) {
+      const cargo = extractCargoFromText(opts.user);
       return sanitizeModelText(
         JSON.stringify({
-          name: "из текста",
-          phone: null,
-          summary: opts.user.slice(0, 180),
-          fields: {},
+          name: cargo.name || "из текста",
+          phone: cargo.phone ?? null,
+          telegram: cargo.telegram ?? null,
+          max: cargo.max ?? null,
+          cargo: cargo.cargo ?? null,
+          weight: cargo.weight ?? null,
+          volume: cargo.volume ?? null,
+          origin: cargo.origin ?? null,
+          destination: cargo.destination ?? null,
+          route: cargo.route ?? null,
+          eta: cargo.eta ?? null,
+          ready: cargo.ready,
+          summary: cargo.summary || opts.user.slice(0, 180),
+          fields: {
+            ...(cargo.telegram ? { telegram: cargo.telegram } : {}),
+            ...(cargo.max ? { max: cargo.max } : {}),
+            ...(cargo.cargo ? { cargo: cargo.cargo } : {}),
+            ...(cargo.weight ? { weight: cargo.weight } : {}),
+            ...(cargo.volume ? { volume: cargo.volume } : {}),
+            ...(cargo.origin ? { origin: cargo.origin } : {}),
+            ...(cargo.destination ? { destination: cargo.destination } : {}),
+            ...(cargo.route ? { route: cargo.route } : {}),
+            ...(cargo.eta ? { eta: cargo.eta } : {}),
+          },
         }),
       );
     }
     const byBook = opts.system.includes("--- знания ---") ? "По методике. " : "";
     const tag = isB ? "модель B. " : "";
+    const sales = /Ты МАКС|код ТН ВЭД/i.test(opts.system);
+    if (sales) {
+      const cargo = extractCargoFromText(opts.user);
+      if (!cargo.cargo && !cargo.weight && !cargo.route) {
+        return sanitizeModelText(
+          `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.`,
+        );
+      }
+      if (!/цб|курс/i.test(opts.user) && cargo.cargo) {
+        return sanitizeModelText(
+          `<think>не клиенту</think>${byBook}${tag}Принял: ${cargo.cargo}${cargo.route ? `, ${cargo.route}` : ""}. Курс для расчёта — ЦБ РФ на сегодня или ваш расчётный?`,
+        );
+      }
+    }
     return sanitizeModelText(
       `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
     );

@@ -1,19 +1,12 @@
 import { randomBytes } from "crypto";
 import { prisma } from "./prisma";
+import { BAZA_ZNANIY, CARGO_FIELDS, PARSE_CARGO_PROMPT, SALES_FIRST_REPLY, SALES_PROMPT } from "./sales";
 
-export const VED_TEMPLATE = [
-  { name: "ТН ВЭД", key: "tnved", fieldType: "tnved", required: true },
-  { name: "Incoterms", key: "incoterms", fieldType: "incoterms", required: false },
-  { name: "Контейнер", key: "container", fieldType: "container", required: false },
-];
+export const VED_TEMPLATE = CARGO_FIELDS.map((f) => ({ ...f }));
 
 export const VED_KNOWLEDGE = {
-  title: "Ориентир ТН ВЭД и поставка Китай → РФ",
-  body: `Клиенту даём ориентир, не декларацию и не бронь судна.
-Код ТН ВЭД — 10 цифр, глава 01–97 кроме 77. Спорный код, антидемпинг, «оптимизируйте любой ценой» — сразу к менеджеру.
-Incoterms (часто FCA): продавец отдаёт товар перевозчику, дальше риск и логистика на покупателе.
-Пошлина и НДС — оценка по коду и базе знаний, не счёт к оплате.
-После ориентира просим контакт и передаём менеджеру, чтобы закрыть поставку.`,
+  title: "База знаний ВЭД (МАКС)",
+  body: BAZA_ZNANIY,
 };
 
 export async function ensureWorkspaceFlow(workspaceId: string) {
@@ -25,29 +18,57 @@ export async function ensureWorkspaceFlow(workspaceId: string) {
 }
 
 export async function applyVedTemplate(workspaceId: string) {
-  for (const f of VED_TEMPLATE) {
+  for (const f of CARGO_FIELDS) {
     await prisma.customField.upsert({
       where: { workspaceId_key: { workspaceId, key: f.key } },
-      update: {},
-      create: { workspaceId, ...f },
+      update: { name: f.name, fieldType: f.fieldType, required: f.required },
+      create: { workspaceId, name: f.name, key: f.key, fieldType: f.fieldType, required: f.required },
+    });
+  }
+  let topic = await prisma.knowledgeTopic.findFirst({
+    where: { workspaceId, name: "ВЭД" },
+  });
+  if (!topic) {
+    topic = await prisma.knowledgeTopic.create({
+      data: { workspaceId, name: "ВЭД" },
     });
   }
   const existing = await prisma.knowledgeArticle.findFirst({
     where: { workspaceId, title: VED_KNOWLEDGE.title },
   });
   if (!existing) {
-    let topic = await prisma.knowledgeTopic.findFirst({
-      where: { workspaceId, name: "ТН ВЭД" },
-    });
-    if (!topic) {
-      topic = await prisma.knowledgeTopic.create({
-        data: { workspaceId, name: "ТН ВЭД" },
-      });
-    }
     await prisma.knowledgeArticle.create({
       data: { workspaceId, topicId: topic.id, title: VED_KNOWLEDGE.title, body: VED_KNOWLEDGE.body },
     });
+  } else {
+    await prisma.knowledgeArticle.update({
+      where: { id: existing.id },
+      data: { topicId: topic.id, body: VED_KNOWLEDGE.body, enabled: true },
+    });
   }
+  const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+  if (ws && (!ws.greeting || ws.greeting.includes("Напишите задачу"))) {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { greeting: SALES_FIRST_REPLY },
+    });
+  }
+  await prisma.channel.updateMany({
+    where: { workspaceId, type: { in: ["telegram", "web_chat"] }, topicId: null },
+    data: { topicId: topic.id },
+  });
+}
+
+export async function bindVedTopic(workspaceId: string, channelId: string) {
+  const topic = await prisma.knowledgeTopic.findFirst({ where: { workspaceId, name: "ВЭД" } });
+  if (!topic) return;
+  await prisma.channel.update({ where: { id: channelId }, data: { topicId: topic.id } });
+}
+
+export function defaultProcessPrompt(processType: string) {
+  if (processType === "draft_reply") return SALES_PROMPT;
+  if (processType === "parse_inbound") return PARSE_CARGO_PROMPT;
+  return "";
 }
 
 export function publicKey(): string {

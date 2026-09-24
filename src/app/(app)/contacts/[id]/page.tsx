@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { CargoCard } from "@/components/CargoCard";
 
 export default function ContactPage() {
   const params = useParams<{ id: string }>();
@@ -23,7 +24,7 @@ export default function ContactPage() {
     channels: { type: string; externalId: string; username: string | null }[];
     leads: { id: string; status: string; urgent: boolean }[];
     conversations: { id: string; channel: { type: string } }[];
-    fieldValues: { id: string; value: string; field: { name: string } }[];
+    fieldValues: { id: string; value: string; field: { name: string; key: string } }[];
   };
 
   return (
@@ -41,16 +42,7 @@ export default function ContactPage() {
           ))}
         </ul>
       </section>
-      <section className="mt-8">
-        <h2 className="text-xl font-semibold">Поля</h2>
-        <ul className="mt-2 text-sm">
-          {contact.fieldValues.map((v) => (
-            <li key={v.id}>
-              {v.field.name}: {v.value}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <CargoCard name={contact.name} phone={contact.phone} values={contact.fieldValues} />
       <section className="mt-8">
         <h2 className="text-xl font-semibold">Лиды</h2>
         <ul className="mt-2 space-y-1">

@@ -340,7 +340,7 @@ function Sheet({
   );
   const [msg, setMsg] = useState("");
   const [tgChat, setTgChat] = useState("");
-  const [tgText, setTgText] = useState("нужен контейнер / FCA");
+  const [tgText, setTgText] = useState("модули памяти, 20 кг, Шанхай → Москва, АВИА");
 
   async function save(extra: Record<string, unknown> = {}) {
     const [provider, ...rest] = modelVal.split(":");

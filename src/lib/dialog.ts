@@ -54,7 +54,7 @@ export function sanitizeModelText(text: string): string {
 }
 
 export function defaultGreeting(): string {
-  return "Здравствуйте! Напишите задачу или попросите менеджера.";
+  return "Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.";
 }
 
 export const AI_DRAFT_LIMIT = 8;

@@ -89,12 +89,21 @@ async function main() {
   assert((empty.data.blocks || []).length === 0, "empty canvas after onboard");
   assert(empty.data.preview === "положите канал", "empty preview " + empty.data.preview);
   assert(empty.data.compact === "положите канал", "empty compact");
+  assert(/ТН ВЭД/.test(empty.data.greeting || ""), "sales greeting seeded");
 
   const vedFields = await req("/api/fields", { cookie });
   assert(vedFields.status === 200, "fields");
-  assert((vedFields.data.fields || []).some((f) => f.key === "tnved" && f.fieldType === "tnved"), "tnved field");
-  assert((vedFields.data.fields || []).some((f) => f.key === "incoterms"), "incoterms field");
-  assert((vedFields.data.fields || []).some((f) => f.key === "container"), "container field");
+  const fieldKeys = (vedFields.data.fields || []).map((f) => f.key);
+  for (const key of ["telegram", "max", "cargo", "weight", "volume", "origin", "destination", "route", "eta"]) {
+    assert(fieldKeys.includes(key), "cargo field " + key);
+  }
+  assert((vedFields.data.fields || []).some((f) => f.key === "route" && f.fieldType === "route"), "route field type");
+  const knowledge0 = await req("/api/knowledge", { cookie });
+  assert((knowledge0.data.topics || []).some((t) => t.name === "ВЭД"), "ВЭД topic seeded");
+  assert(
+    (knowledge0.data.articles || []).some((a) => /ТН ВЭД|курс ЦБ|МАКС/i.test(a.body) || /ТН ВЭД|курс ЦБ|МАКС/i.test(a.title)),
+    "baza-znaniy seeded",
+  );
 
   async function add(kind) {
     const x = await req("/api/flow/blocks", { method: "POST", cookie, json: { kind } });
@@ -121,10 +130,14 @@ async function main() {
   const parseProc = flow.data.processes.find((p) => p.type === "parse_inbound");
   const draftProc = flow.data.processes.find((p) => p.type === "draft_reply");
   assert(formCh && tgCh && parseProc && draftProc, "slots created");
+  assert(/Ты МАКС/.test(String(draftProc.prompt || "")), "sales prompt on draft");
+  assert(/ROLE=parse_cargo_json/.test(String(parseProc.prompt || "")), "parse cargo prompt");
   assert(String(formCh.snippet).includes("#F2F2F2"), "widget paper #F2F2F2");
   assert(String(formCh.snippet).includes("#99CCFF"), "widget accent #99CCFF");
   assert(String(formCh.snippet).includes("#C5E2FF"), "widget mist #C5E2FF");
   assert(String(formCh.snippet).includes("color:#1a1a1a"), "widget dark text");
+  assert(String(formCh.snippet).includes("Написать в чат"), "short form chat link");
+  assert(!/tnved|Incoterms|контейнер/i.test(String(formCh.snippet)), "snippet is not VED form");
   assert(
     (flow.data.models || []).some((m) => m.provider === "mock" && m.model === "ok-b"),
     "mock:ok-b listed",
@@ -155,9 +168,7 @@ async function main() {
     json: {
       name: "Клиент А",
       phone: phoneA,
-      comment: "нужен контейнер FCA",
-      tnved: "0101210000",
-      incoterms: "FCA",
+      comment: "перезвоните, продолжим в чате",
     },
   });
   assert(r.status === 200 && r.data.leadId, "valid form creates lead: " + JSON.stringify(r.data));
@@ -169,17 +180,19 @@ async function main() {
   assert(contactCard.status === 200 && contactCard.data.id === contactA, "contact card");
   assert((contactCard.data.channels || []).length >= 1, "contact channels");
   assert((contactCard.data.leads || []).some((l) => l.id === leadA), "contact leads");
-  assert(
-    (contactCard.data.fieldValues || []).some((v) => v.field?.key === "tnved" && String(v.value).includes("0101210000")),
-    "tnved stored on contact",
-  );
+  assert(contactCard.data.name === "Клиент А", "short form stores name");
+  assert(contactCard.data.phone === phoneA, "short form stores phone");
   r = await req(`/api/contacts/${contactA}`, { method: "PATCH", cookie, json: { phone: "abc" } });
   assert(r.status === 400, "contact invalid phone");
 
   const formHtml = await req(`/f/${formCh.publicKey}`);
   assert(formHtml.status === 200, "public form page");
   const formRaw = formHtml.data?.raw || JSON.stringify(formHtml.data);
-  assert(/Оставить заявку/.test(formRaw), "public form title");
+  assert(/Имя и телефон/.test(formRaw), "short form title");
+  assert(/Написать в чат/.test(formRaw), "short form chat CTA");
+  assert(!/Оставить заявку/.test(formRaw), "rejected long VED form title");
+  assert(!/name="tnved"/.test(formRaw), "no tnved input");
+  assert(!/name="incoterms"/.test(formRaw), "no incoterms input");
 
   r = await req(`/api/channels/${formCh.id}/test`, { method: "POST", cookie, json: {} });
   assert(r.status === 200 && r.data.ok === true && r.data.leadId, "canvas form test " + JSON.stringify(r.data));
@@ -190,7 +203,6 @@ async function main() {
       name: "Клиент А повтор",
       phone: phoneA,
       comment: "ещё раз",
-      tnved: "0101210000",
     },
   });
   assert(r.status === 200, "second form");
@@ -201,22 +213,11 @@ async function main() {
 
   r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
     method: "POST",
-    json: { name: "Брак", phone: "79990001122", comment: "bad", tnved: "7700000000" },
-  });
-  assert(r.status === 400, "invalid tnved rejected");
-  const leads2 = await req("/api/leads", { cookie });
-  assert(leads2.data.items.length === beforeInvalid, "invalid tnved does not create lead");
-
-  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
-    method: "POST",
-    json: { name: "Брак тел", phone: "12", comment: "bad", tnved: "0101210000" },
+    json: { name: "Брак тел", phone: "12", comment: "bad" },
   });
   assert(r.status === 400, "invalid phone rejected");
-  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
-    method: "POST",
-    json: { name: "Брак Incoterms", phone: "79990001122", comment: "bad", tnved: "0101210000", incoterms: "XXX" },
-  });
-  assert(r.status === 400, "invalid incoterms rejected");
+  const leads2 = await req("/api/leads", { cookie });
+  assert(leads2.data.items.length === beforeInvalid, "invalid phone does not create lead");
 
   r = await req(`/api/flow/blocks/${parseBlock.id}`, {
     method: "PATCH",
@@ -231,7 +232,6 @@ async function main() {
       name: "Клиент дефолт",
       phone: phoneB,
       comment: "без явной модели",
-      tnved: "0201100001",
     },
   });
   assert(r.status === 200 && r.data.leadId, "default model still creates lead");
@@ -254,7 +254,6 @@ async function main() {
       name: "Клиент сбой",
       phone: phoneC,
       comment: "сломать parse",
-      tnved: "0301110000",
     },
   });
   assert(r.status === 200 && r.data.leadId, "AI fail still creates lead");
@@ -283,11 +282,17 @@ async function main() {
   assert(tgItem, "telegram in inbox");
   const convTg = await req(`/api/conversations/${tgItem.id}`, { cookie });
   const draft = convTg.data.messages.find((m) => m.direction === "draft");
-  assert(draft, "draft exists and is not sent");
-  assert(!convTg.data.messages.some((m) => m.direction === "outbound"), "draft not auto-sent");
-  assert(!String(draft.body).includes("<think>"), "think tags stripped from draft");
+  assert(draft, "draft exists");
+  assert(
+    (convTg.data.messages || []).some((m) => m.direction === "outbound"),
+    "explicit telegram bot replies in-channel",
+  );
+  const tgOut = [...convTg.data.messages].reverse().find((m) => m.direction === "outbound");
+  assert(tgOut && !String(tgOut.body).includes("<think>"), "think tags stripped from telegram reply");
+  assert(!/"ready"\s*:/.test(String(tgOut.body)), "telegram client does not see parse JSON");
   assert(String(draft.body).includes("По методике"), "knowledge stuffed into draft prompt");
   assert(String(draft.body).includes("модель B"), "draft uses other explicit model");
+  assert(!/"ready"\s*:/.test(String(draft.body)), "draft is sales text not cargo JSON");
 
   r = await req(`/api/conversations/${tgItem.id}`, {
     method: "POST",
@@ -458,7 +463,7 @@ async function main() {
   assert(r.status === 200, "disable web form channel");
   r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
     method: "POST",
-    json: { name: "Выкл", phone: "79990001122", tnved: "0101210000" },
+    json: { name: "Выкл", phone: "79990001122" },
   });
   assert(r.status === 403, "disabled channel rejects ingest");
   r = await req(`/api/flow/blocks/${formBlock.id}`, { method: "PATCH", cookie, json: { enabled: true } });
@@ -499,6 +504,18 @@ async function main() {
     !(chatDefPoll.data.messages || []).some((m) => m.direction === "outbound"),
     "default model does not auto-reply in chat",
   );
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: "tg-default-" + id, text: "привет без явной модели", name: "ТГ дефолт" },
+  });
+  assert(r.status === 200, "telegram default ingest");
+  assert(r.data.urgent === true, "telegram default model is urgent");
+  const convTgDef = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  assert(
+    !(convTgDef.data.messages || []).some((m) => m.direction === "outbound"),
+    "default/empty model does not auto-send telegram",
+  );
   r = await req(`/api/flow/blocks/${draftBlock.id}`, {
     method: "PATCH",
     cookie,
@@ -517,6 +534,10 @@ async function main() {
   assert(
     (chatPoll.data.messages || []).some((m) => m.direction === "outbound"),
     "explicit model publishes chat reply",
+  );
+  assert(
+    !(chatPoll.data.messages || []).some((m) => /"ready"\s*:/.test(String(m.body))),
+    "chat client does not see parse JSON",
   );
   if (r.data.leadId) {
     const chatLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
@@ -544,11 +565,74 @@ async function main() {
       name: "После deep",
       phone: phoneDeep,
       comment: "цепочка жива",
-      tnved: "0402100000",
     },
   });
   assert(r.status === 200 && r.data.leadId, "chain works with deep slot present");
   assert(r.data.urgent === false, "deep slot without key does not auto-urgent");
+
+  const cargoPhone = "7999666" + String(Math.floor(1000 + Math.random() * 8999));
+  const cargoPhoneTg = "7999777" + String(Math.floor(1000 + Math.random() * 8999));
+  const cargoText =
+    "Имя Павел. Груз: модули памяти ЭВМ, ссылка https://example.com/mod, фото есть, инвойсная стоимость 10000, 20 шт. Вес 12 кг, объём 0.5 м3. Отправка Шанхай, прибытие Москва. Приоритет АИВА. Срок октябрь 2026. Телефон " +
+    cargoPhone +
+    " телеграм @pavelved max:maxpavel";
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: "chat-cargo-" + id, name: "Павел", text: cargoText },
+  });
+  assert(r.status === 200 && r.data.leadId, "chat cargo creates lead " + JSON.stringify(r.data));
+  assert(r.data.urgent === false, "explicit cargo chat is not auto-urgent");
+  const cargoContact = await req(`/api/contacts/${r.data.contactId}`, { cookie });
+  const cargoMap = Object.fromEntries(
+    (cargoContact.data.fieldValues || []).map((v) => [v.field.key, v.value]),
+  );
+  assert(cargoContact.data.name === "Павел" || cargoContact.data.name === "из текста", "cargo name");
+  assert(cargoContact.data.phone === cargoPhone, "cargo phone on contact");
+  assert(cargoMap.telegram === "@pavelved", "cargo telegram " + cargoMap.telegram);
+  assert(cargoMap.max === "maxpavel", "cargo max " + cargoMap.max);
+  assert(/модул/i.test(cargoMap.cargo || ""), "cargo description " + cargoMap.cargo);
+  assert(String(cargoMap.weight || "").includes("12"), "cargo weight " + cargoMap.weight);
+  assert(/0\.5/.test(String(cargoMap.volume || "")), "cargo volume " + cargoMap.volume);
+  assert(/Шанхай/.test(String(cargoMap.origin || "")), "cargo origin " + cargoMap.origin);
+  assert(/Москва/.test(String(cargoMap.destination || "")), "cargo destination " + cargoMap.destination);
+  assert(cargoMap.route === "АВИА", "АИВА → АВИА, got " + cargoMap.route);
+  assert(/октябр/i.test(String(cargoMap.eta || "")), "cargo eta " + cargoMap.eta);
+  const cargoLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
+  const leadMap = Object.fromEntries(
+    (cargoLead.data.fieldValues || []).map((v) => [v.field.key, v.value]),
+  );
+  assert(leadMap.route === "АВИА", "lead card route АВИА");
+  const cargoChatPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-cargo-${id}`);
+  assert(
+    (cargoChatPoll.data.messages || []).some((m) => m.direction === "outbound" && /курс|ТН ВЭД|Принял/i.test(m.body)),
+    "sales bot replies in chat after cargo",
+  );
+
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: {
+      chatId: "tg-cargo-" + id,
+      text: cargoText
+        .replace("Павел", "Олег")
+        .replace("@pavelved", "@olegved")
+        .replace(cargoPhone, cargoPhoneTg)
+        .replace("maxpavel", "maxoleg"),
+      username: "olegved",
+      name: "Олег",
+    },
+  });
+  assert(r.status === 200 && r.data.leadId, "telegram cargo creates lead");
+  const tgCargoConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  assert(
+    (tgCargoConv.data.messages || []).some((m) => m.direction === "outbound"),
+    "explicit telegram cargo bot replies",
+  );
+  const tgCargoContact = await req(`/api/contacts/${r.data.contactId}`, { cookie });
+  const tgCargoMap = Object.fromEntries(
+    (tgCargoContact.data.fieldValues || []).map((v) => [v.field.key, v.value]),
+  );
+  assert(tgCargoMap.route === "АВИА", "telegram АИВА → АВИА");
 
   const team = await req("/api/team", { cookie });
   const mgr = (team.data.members || []).find((m) => m.role === "manager");

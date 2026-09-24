@@ -43,18 +43,12 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const custom = await prisma.customField.findMany({ where: { workspaceId: channel.workspaceId } });
   const fields: Record<string, string> = {};
-  const errors: Record<string, string> = {};
+  // Короткая форма: только имя и телефон. Груз и ТН ВЭД — в чате.
   for (const field of custom) {
-    const value = String(payload[field.key] ?? "");
-    const err = validateField(field.fieldType, value, field.required);
-    if (err) errors[field.key] = err;
-    else if (value.trim()) fields[field.key] = value.trim();
-  }
-  if (errors.tnved) {
-    return NextResponse.json({ error: "Невалидный ТН ВЭД", errors }, { status: 400 });
-  }
-  if (Object.keys(errors).length) {
-    return NextResponse.json({ error: "Проверьте поля", errors }, { status: 400 });
+    const value = String(payload[field.key] ?? "").trim();
+    if (!value) continue;
+    const err = validateField(field.fieldType, value, false);
+    if (!err) fields[field.key] = value;
   }
 
   const bodyParts = [

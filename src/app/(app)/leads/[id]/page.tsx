@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { sourceLabel } from "@/lib/labels";
+import { CargoCard } from "@/components/CargoCard";
 
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
@@ -16,6 +17,7 @@ export default function LeadPage() {
     contact: { id: string; name: string; phone: string | null };
     assignee: { name: string } | null;
     conversation: { id: string } | null;
+    fieldValues?: { value: string; field: { key: string; name: string } }[];
   } | null>(null);
   const [comment, setComment] = useState("");
 
@@ -69,6 +71,7 @@ export default function LeadPage() {
           </>
         )}
       </p>
+      <CargoCard name={lead.contact.name} phone={lead.contact.phone} values={lead.fieldValues} />
       <textarea className="mt-6 w-full max-w-xl rounded-2xl border border-line bg-slot p-3" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} />
       <div className="mt-4 flex flex-wrap gap-2">
         <button onClick={() => save()} className="rounded-xl border border-line px-4 py-2">

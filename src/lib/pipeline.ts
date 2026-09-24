@@ -3,6 +3,9 @@ import { logActivity } from "./activity";
 import { asConfig } from "./workspace";
 import { parseBinding, runModel } from "./ai";
 import { validateField } from "./validators";
+import { cargoBagFromParsed, extractCargoFromText, normalizeRoute } from "./sales";
+import { defaultProcessPrompt } from "./workspace";
+import { deliverOutbound } from "./outbound";
 import {
   AI_DRAFT_LIMIT,
   defaultGreeting,
@@ -182,19 +185,31 @@ async function upsertFields(
 ) {
   const fields = await prisma.customField.findMany({ where: { workspaceId } });
   for (const field of fields) {
-    const raw = values[field.key];
+    let raw = values[field.key];
     if (raw === undefined || raw === "") continue;
+    if (field.fieldType === "route") {
+      const n = normalizeRoute(raw);
+      if (!n) continue;
+      raw = n;
+    }
     const err = validateField(field.fieldType, raw, false);
     if (err) continue;
-    await prisma.fieldValue.create({
-      data: {
-        workspaceId,
-        fieldId: field.id,
-        contactId,
-        leadId,
-        value: raw.trim(),
-      },
+    const existing = await prisma.fieldValue.findFirst({
+      where: { workspaceId, fieldId: field.id, contactId, ...(leadId ? { leadId } : {}) },
     });
+    if (existing) {
+      await prisma.fieldValue.update({ where: { id: existing.id }, data: { value: raw.trim(), leadId } });
+    } else {
+      await prisma.fieldValue.create({
+        data: {
+          workspaceId,
+          fieldId: field.id,
+          contactId,
+          leadId,
+          value: raw.trim(),
+        },
+      });
+    }
   }
 }
 
@@ -389,15 +404,11 @@ export async function ingestInbound(input: IngestInput) {
 
   const history = await sessionHistory(conversation.id);
   const parse = processes.find((p) => p.type === "parse_inbound");
-  let parsed: { name?: string; phone?: string; summary?: string; fields?: Record<string, string> } = {};
+  let parsed: Record<string, unknown> = {};
   if (parse && !closed) {
     const binding = parse.explicit ?? parse.fallback ?? { provider: "mock", model: "ok" };
     try {
-      const system = withKnowledge(
-        parse.prompt ||
-          "Ты разбираешь входящую заявку малого бизнеса. Верни JSON {name, phone, summary, fields} без markdown.",
-        articles,
-      );
+      const system = withKnowledge(parse.prompt || defaultProcessPrompt("parse_inbound"), articles);
       const text = await runModel({
         provider: binding.provider,
         model: binding.model,
@@ -407,7 +418,7 @@ export async function ingestInbound(input: IngestInput) {
       const jsonStart = text.indexOf("{");
       const jsonEnd = text.lastIndexOf("}");
       if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+        parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1)) as Record<string, unknown>;
       }
       await prisma.flowBlock.update({ where: { id: parse.blockId }, data: { lastError: null } });
     } catch (e) {
@@ -445,14 +456,48 @@ export async function ingestInbound(input: IngestInput) {
     }
   }
 
-  if (parsed.name && contact.name === "Без имени") {
-    await prisma.contact.update({ where: { id: contact.id }, data: { name: parsed.name } });
+  const heuristic = extractCargoFromText([history, input.body].filter(Boolean).join("\n"));
+  const parsedName =
+    (typeof parsed.name === "string" && parsed.name) || heuristic.name || "";
+  const parsedPhone =
+    (typeof parsed.phone === "string" && parsed.phone) || heuristic.phone || "";
+  const parsedTelegram =
+    (typeof parsed.telegram === "string" && parsed.telegram) || heuristic.telegram || "";
+  const parsedReady = parsed.ready === true || heuristic.ready;
+  const parsedSummary =
+    (typeof parsed.summary === "string" && parsed.summary) || heuristic.summary || "";
+
+  if (parsedName && contact.name === "Без имени") {
+    await prisma.contact.update({ where: { id: contact.id }, data: { name: parsedName } });
   }
-  if (parsed.phone && !contact.phone) {
-    await prisma.contact.update({ where: { id: contact.id }, data: { phone: parsed.phone } });
+  if (parsedPhone && !contact.phone) {
+    await prisma.contact.update({ where: { id: contact.id }, data: { phone: parsedPhone } });
+  }
+  if (parsedTelegram) {
+    const tgCh = await prisma.contactChannel.findFirst({
+      where: { contactId: contact.id, type: "telegram" },
+    });
+    if (tgCh && !tgCh.username) {
+      await prisma.contactChannel.update({ where: { id: tgCh.id }, data: { username: parsedTelegram } });
+    }
   }
 
-  const shouldCreateLead = input.source === "web_form" || hasCreateLeadAction || handoff;
+  const cargoBag = cargoBagFromParsed(parsed, {
+    ...(heuristic.telegram ? { telegram: heuristic.telegram } : {}),
+    ...(heuristic.max ? { max: heuristic.max } : {}),
+    ...(heuristic.cargo ? { cargo: heuristic.cargo } : {}),
+    ...(heuristic.weight ? { weight: heuristic.weight } : {}),
+    ...(heuristic.volume ? { volume: heuristic.volume } : {}),
+    ...(heuristic.origin ? { origin: heuristic.origin } : {}),
+    ...(heuristic.destination ? { destination: heuristic.destination } : {}),
+    ...(heuristic.route ? { route: heuristic.route } : {}),
+    ...(heuristic.eta ? { eta: heuristic.eta } : {}),
+    ...(input.fields ?? {}),
+    ...(input.username && !parsedTelegram ? { telegram: input.username } : {}),
+  });
+
+  const shouldCreateLead =
+    input.source === "web_form" || hasCreateLeadAction || handoff || parsedReady || Boolean(cargoBag.cargo);
   let leadId: string | null = null;
   if (shouldCreateLead) {
     const existing =
@@ -467,6 +512,12 @@ export async function ingestInbound(input: IngestInput) {
           data: { urgent: true, assigneeId },
         });
       }
+      if (parsedSummary) {
+        await prisma.lead.update({
+          where: { id: existing.id },
+          data: { comment: sanitizeModelText(parsedSummary).slice(0, 400) },
+        });
+      }
     } else {
       const lead = await prisma.lead.create({
         data: {
@@ -477,7 +528,7 @@ export async function ingestInbound(input: IngestInput) {
           source: input.source,
           urgent: needsWatch || handoff,
           assigneeId: needsWatch || handoff ? assigneeId : null,
-          comment: sanitizeModelText(parsed.summary || input.body).slice(0, 400),
+          comment: sanitizeModelText(parsedSummary || input.body).slice(0, 400),
         },
       });
       leadId = lead.id;
@@ -490,18 +541,14 @@ export async function ingestInbound(input: IngestInput) {
     }
   }
 
-  const fieldBag = { ...(input.fields ?? {}), ...(parsed.fields ?? {}) };
+  const fieldBag = cargoBag;
   await upsertFields(input.workspaceId, contact.id, leadId, fieldBag);
 
   const draft = processes.find((p) => p.type === "draft_reply");
   if (draft && !humanOwns) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
-      const system = withKnowledge(
-        draft.prompt ||
-          "Ты менеджер малого бизнеса. Напиши короткий черновик ответа клиенту по-русски. Не обещай того, чего нет в тексте.",
-        articles,
-      );
+      const system = withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles);
       const text = await runModel({
         provider: binding.provider,
         model: binding.model,
@@ -516,16 +563,18 @@ export async function ingestInbound(input: IngestInput) {
           body: text,
         },
       });
-      if (input.source === "web_chat" && draft.explicit && !needsWatch && !humanOwns && !handoff) {
-        await prisma.message.create({
-          data: {
-            workspaceId: input.workspaceId,
-            conversationId: conversation.id,
-            direction: "outbound",
-            body: text,
-            sentAt: new Date(),
-          },
+      const botMayTalk =
+        draft.explicit &&
+        !needsWatch &&
+        !humanOwns &&
+        !handoff &&
+        (input.source === "web_chat" || input.source === "telegram");
+      if (botMayTalk) {
+        const convFull = await prisma.conversation.findFirst({
+          where: { id: conversation.id },
+          include: { channel: true, contact: { include: { channels: true } } },
         });
+        if (convFull) await deliverOutbound(convFull, text);
       }
       await prisma.flowBlock.update({ where: { id: draft.blockId }, data: { lastError: null } });
       const reset = await prisma.message.findFirst({

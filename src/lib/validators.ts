@@ -1,3 +1,5 @@
+import { normalizeRoute, ROUTE_OPTIONS } from "./sales";
+
 const INCOTERMS = ["EXW", "FOB", "FCA", "CIF", "CIP", "CFR", "DAP", "DDP", "CPT", "FAS", "DPU"];
 
 export function normalizePhone(raw: string): string | null {
@@ -33,6 +35,10 @@ export function validateContainer(raw: string): string | null {
   return null;
 }
 
+export function validateRoute(raw: string): string | null {
+  return normalizeRoute(raw) ? null : `Маршрут: ${ROUTE_OPTIONS.join(", ")}`;
+}
+
 export function validateField(fieldType: string, value: string, required: boolean): string | null {
   const v = value.trim();
   if (!v) return required ? "Обязательное поле" : null;
@@ -45,6 +51,8 @@ export function validateField(fieldType: string, value: string, required: boolea
       return validateIncoterms(v);
     case "container":
       return validateContainer(v);
+    case "route":
+      return validateRoute(v);
     case "number":
       return Number.isFinite(Number(v.replace(",", "."))) ? null : "Нужно число";
     default:

@@ -40,7 +40,7 @@ export default function OnboardPage() {
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={ved} onChange={(e) => setVed(e.target.checked)} />
-          Шаблон полей ВЭД (ТН ВЭД, Incoterms, контейнер)
+          Карточка груза и база ВЭД (приём в чате МАКС)
         </label>
         {error && <p className="text-sm text-urgent">{error}</p>}
         <button type="submit" className="rounded-xl bg-accent px-5 py-2.5 text-ink">

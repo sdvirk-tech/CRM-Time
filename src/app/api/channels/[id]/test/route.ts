@@ -49,8 +49,8 @@ export async function POST(req: Request, ctx: Ctx) {
         externalId: `test:${session.userId}`,
         name: "Тестовая заявка",
         phone: "79990000000",
-        body: "Имя: Тестовая заявка\nТелефон: 79990000000\nКомментарий: проверка цепочки\ntnved: 0101210000",
-        fields: { tnved: "0101210000" },
+        body: "Имя: Тестовая заявка\nТелефон: 79990000000\nКомментарий: проверка цепочки",
+        fields: {},
       });
       return NextResponse.json({ ok: true, ...result });
     }
