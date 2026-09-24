@@ -62,6 +62,7 @@ export default function FlowPage() {
     defaultModel: string | null;
     greeting: string;
     topics: Topic[];
+    publicUrl?: string;
   } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -294,6 +295,7 @@ export default function FlowPage() {
           process={data.processes.find((p) => p.id === open.config.aiProcessId)}
           models={data.models}
           topics={data.topics ?? []}
+          publicUrl={data.publicUrl ?? ""}
           owner={owner}
           onClose={() => setOpenId(null)}
           onSaved={async () => {
@@ -311,6 +313,7 @@ function Sheet({
   process,
   models,
   topics,
+  publicUrl,
   owner,
   onClose,
   onSaved,
@@ -320,6 +323,7 @@ function Sheet({
   process?: Process;
   models: Model[];
   topics: Topic[];
+  publicUrl: string;
   owner: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -371,6 +375,15 @@ function Sheet({
     const data = await res.json();
     setMsg(res.ok ? (data.username ? `Ок, бот @${data.username}` : "Тестовая заявка ушла во входящие и в лиды") : data.error);
     await onSaved();
+  }
+
+  async function reregisterWebhook() {
+    if (!channel) return;
+    const res = await fetch(`/api/channels/${channel.id}/webhook`, { method: "POST" });
+    const data = await res.json();
+    if (!res.ok) setMsg(data.error || "Ошибка webhook");
+    else if (data.ok) setMsg(`Webhook: ${data.description || "зарегистрирован"}`);
+    else setMsg(data.description || data.error || "Telegram не принял URL — нужен HTTPS PUBLIC_URL");
   }
 
   async function simulateTg() {
@@ -465,7 +478,13 @@ function Sheet({
             ) : (
               <p className="text-muted">Токен бота скрыт. Работайте во входящих.</p>
             )}
+            <p className="break-all text-xs text-muted">Публичный URL: {publicUrl || "APP_URL / PUBLIC_URL"}</p>
             <p className="break-all text-xs text-muted">Webhook: {channel.webhookUrl}</p>
+            {owner && (
+              <button type="button" onClick={reregisterWebhook} className="rounded border border-accent bg-paper px-3 py-1.5">
+                Перерегистрировать webhook
+              </button>
+            )}
             {owner && (
               <div className="space-y-2 border-t border-line pt-3">
                 <p className="text-muted">Симуляция входящего (без живого бота)</p>
@@ -517,10 +536,10 @@ function Sheet({
         )}
 
         {block.lastError && <p className="mt-4 text-sm text-urgent">Ошибка слота: {block.lastError}</p>}
-        {msg && /ок|сохран|скопир|ушла|сообщение/i.test(msg) && (
+        {msg && /ок|сохран|скопир|ушла|сообщение|webhook/i.test(msg) && (
           <p className="ok-banner mt-4 rounded px-3 py-2 text-sm">{msg}</p>
         )}
-        {msg && !/ок|сохран|скопир|ушла|сообщение/i.test(msg) && <p className="mt-4 text-sm text-urgent">{msg}</p>}
+        {msg && !/ок|сохран|скопир|ушла|сообщение|webhook/i.test(msg) && <p className="mt-4 text-sm text-urgent">{msg}</p>}
 
         {owner && (
           <div className="mt-8 flex flex-wrap gap-2">

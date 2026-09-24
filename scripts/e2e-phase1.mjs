@@ -425,6 +425,51 @@ async function main() {
   r = await req("/api/log", { cookie: mgrCookie });
   assert(r.status === 200, "manager can read log");
 
+  const stats = await req("/api/stats", { cookie });
+  assert(stats.status === 200, "stats");
+  assert(typeof stats.data.today?.inbound === "number", "today inbound");
+  assert(stats.data.today.leads >= 1, "today leads");
+  assert(typeof stats.data.stale === "number", "stale count");
+  assert(stats.data.slaMinutes === 15, "default sla 15");
+  r = await req("/api/workspace", { method: "PATCH", cookie, json: { slaMinutes: 0 } });
+  assert(r.status === 200 && r.data.slaMinutes === 0, "sla immediate");
+  const inboxStale = await req("/api/inbox", { cookie });
+  assert(
+    (inboxStale.data.items || []).some((i) => i.stale === true),
+    "unanswered conversation flagged stale",
+  );
+  r = await req("/api/workspace", { method: "PATCH", cookie, json: { slaMinutes: 15 } });
+  assert(r.status === 200 && r.data.slaMinutes === 15, "sla restored");
+  r = await req("/api/workspace", { method: "PATCH", cookie: mgrCookie, json: { slaMinutes: 0 } });
+  assert(r.status === 403, "manager cannot set sla");
+
+  const flowPub = await req("/api/flow", { cookie });
+  assert(String(flowPub.data.publicUrl || "").includes("http"), "public url on flow");
+  r = await req(`/api/channels/${tgCh.id}/webhook`, { method: "POST", cookie });
+  assert(r.status === 400, "webhook re-register without token");
+
+  const csv = await req("/api/log?format=csv", { cookie });
+  const csvText = csv.data?.raw || "";
+  assert(csv.status === 200 && csvText.includes("событие"), "csv header");
+  assert(/ingest|redirect/.test(csvText), "csv has events");
+  assert(String(csv.headers.get("content-type") || "").includes("text/csv"), "csv content type");
+
+  const lockEmail = `lock-${id}@example.com`;
+  r = await req("/api/auth/register", { method: "POST", json: { name: "Лок", email: lockEmail, password: "secret12" } });
+  assert(r.status === 200, "lock user");
+  let last = null;
+  for (let i = 0; i < 5; i++) {
+    last = await req("/api/auth/login", { method: "POST", json: { email: lockEmail, password: "wrong-pass" } });
+  }
+  assert(last.status === 429, "fifth fail locks " + JSON.stringify(last.data));
+  r = await req("/api/auth/login", { method: "POST", json: { email: lockEmail, password: "secret12" } });
+  assert(r.status === 429, "lock holds for correct password");
+  const softEmail = `soft-${id}@example.com`;
+  await req("/api/auth/register", { method: "POST", json: { name: "Софт", email: softEmail, password: "secret12" } });
+  await req("/api/auth/login", { method: "POST", json: { email: softEmail, password: "bad" } });
+  r = await req("/api/auth/login", { method: "POST", json: { email: softEmail, password: "secret12" } });
+  assert(r.status === 200, "correct password after few fails");
+
   const deep = await req("/api/models", { cookie });
   assert(deep.data.deepAnalysisEnabled === false || typeof deep.data.deepAnalysisEnabled === "boolean", "deep flag");
 

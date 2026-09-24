@@ -118,3 +118,40 @@ export function publicRegistrationOpen(): boolean {
 export async function userCount() {
   return prisma.user.count();
 }
+
+const LOGIN_FAIL_LIMIT = 5;
+const LOGIN_LOCK_MS = 15 * 60 * 1000;
+
+export async function attemptLogin(email: string, password: string) {
+  const user = await prisma.user.findUnique({
+    where: { email: email.toLowerCase() },
+    include: { memberships: true },
+  });
+  if (user?.lockedUntil && user.lockedUntil > new Date()) {
+    return { ok: false as const, status: 429, error: "Слишком много попыток. Подождите 15 минут." };
+  }
+  if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    if (user) {
+      const fails = user.loginFailCount + 1;
+      const locked = fails >= LOGIN_FAIL_LIMIT;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          loginFailCount: fails,
+          lockedUntil: locked ? new Date(Date.now() + LOGIN_LOCK_MS) : null,
+        },
+      });
+      if (locked) {
+        return { ok: false as const, status: 429, error: "Слишком много попыток. Подождите 15 минут." };
+      }
+    }
+    return { ok: false as const, status: 401, error: "Неверная почта или пароль" };
+  }
+  if (user.loginFailCount || user.lockedUntil) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { loginFailCount: 0, lockedUntil: null },
+    });
+  }
+  return { ok: true as const, user };
+}

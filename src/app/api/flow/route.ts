@@ -5,7 +5,7 @@ import { jsonError } from "@/lib/auth";
 import { asConfig, ensureWorkspaceFlow } from "@/lib/workspace";
 import { deepAnalysisEnabled, listModels } from "@/lib/ai";
 import { decryptSecret } from "@/lib/crypto";
-import { appUrl } from "@/lib/env";
+import { publicUrl } from "@/lib/env";
 
 export async function GET() {
   return withSession(async (session) => {
@@ -44,9 +44,9 @@ export async function GET() {
             : c.type === "web_form"
               ? formSnippet(c.publicKey)
               : "",
-        formUrl: `${appUrl()}/f/${c.publicKey}`,
-        chatUrl: `${appUrl()}/c/${c.publicKey}`,
-        webhookUrl: `${appUrl()}/api/ingest/telegram/${c.publicKey}`,
+        formUrl: `${publicUrl()}/f/${c.publicKey}`,
+        chatUrl: `${publicUrl()}/c/${c.publicKey}`,
+        webhookUrl: `${publicUrl()}/api/ingest/telegram/${c.publicKey}`,
         topicId: c.topicId,
         tokenPreview: isOwner && c.secretsEnc ? "••••••••" : null,
       };
@@ -64,6 +64,8 @@ export async function GET() {
       role: session.role,
       defaultModel: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.defaultModel ?? null,
       greeting: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.greeting ?? "",
+      publicUrl: publicUrl(),
+      slaMinutes: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.slaMinutes ?? 15,
       topics: await prisma.knowledgeTopic.findMany({
         where: { workspaceId: session.workspaceId },
         orderBy: { createdAt: "asc" },
@@ -73,13 +75,13 @@ export async function GET() {
 }
 
 function chatSnippet(key: string) {
-  const url = `${appUrl()}/c/${key}`;
+  const url = `${publicUrl()}/c/${key}`;
   return `<!-- CRM-Time chat -->
 <iframe src="${url}" title="Чат" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;border:1px solid #99CCFF;width:360px;height:480px"></iframe>`;
 }
 
 function formSnippet(key: string) {
-  const url = `${appUrl()}/api/ingest/web-form/${key}`;
+  const url = `${publicUrl()}/api/ingest/web-form/${key}`;
   return `<!-- CRM-Time widget -->
 <form action="${url}" method="POST" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;padding:16px;max-width:420px;border:1px solid #99CCFF">
   <div style="background:#C5E2FF;color:#1a1a1a;padding:8px 12px;margin:-16px -16px 12px">Оставить заявку</div>

@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { DayOverview, DayStats } from "@/components/DayOverview";
 
 type Item = {
   id: string;
   unread: boolean;
   urgent: boolean;
+  stale?: boolean;
   urgentReason: string | null;
   status: string;
   aiError: string | null;
@@ -19,25 +21,29 @@ type Item = {
 export default function InboxPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [unread, setUnread] = useState(0);
-  const [filter, setFilter] = useState<"all" | "unread" | "urgent">("all");
+  const [stats, setStats] = useState<DayStats | null>(null);
+  const [filter, setFilter] = useState<"all" | "unread" | "urgent" | "stale">("all");
   const [channel, setChannel] = useState<"all" | "web_form" | "telegram" | "web_chat">("all");
   const [status, setStatus] = useState<"all" | "ai" | "manager" | "closed">("all");
 
-  useEffect(() => {
+  async function load() {
     const q = new URLSearchParams(window.location.search).get("filter");
-    if (q === "urgent" || q === "unread") setFilter(q);
-    fetch("/api/inbox")
-      .then((r) => r.json())
-      .then((d) => {
-        setItems(d.items ?? []);
-        setUnread(d.unread ?? 0);
-      });
+    if (q === "urgent" || q === "unread" || q === "stale") setFilter(q);
+    const [inbox, day] = await Promise.all([fetch("/api/inbox").then((r) => r.json()), fetch("/api/stats").then((r) => r.json())]);
+    setItems(inbox.items ?? []);
+    setUnread(inbox.unread ?? 0);
+    setStats(day);
+  }
+
+  useEffect(() => {
+    load();
   }, []);
 
   const visible = useMemo(() => {
     return items.filter((i) => {
       if (filter === "unread" && !i.unread) return false;
       if (filter === "urgent" && !i.urgent) return false;
+      if (filter === "stale" && !i.stale) return false;
       if (channel !== "all" && i.channel.type !== channel) return false;
       if (status !== "all" && i.status !== status) return false;
       return true;
@@ -49,10 +55,11 @@ export default function InboxPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink">Рабочий стол</p>
       <h1 className="mt-2 text-3xl font-semibold">Входящие</h1>
       <p className="mt-2 text-muted">Без ответа: {unread}</p>
+      <DayOverview stats={stats} onSla={load} />
       <div className="mt-4 flex flex-wrap gap-2">
-        {(["all", "unread", "urgent"] as const).map((f) => (
+        {(["all", "unread", "urgent", "stale"] as const).map((f) => (
           <button key={f} className={filter === f ? "chip chip-on" : "chip"} onClick={() => setFilter(f)}>
-            {f === "all" ? "все" : f === "unread" ? "без ответа" : "срочно"}
+            {f === "all" ? "все" : f === "unread" ? "без ответа" : f === "urgent" ? "срочно" : "завис"}
           </button>
         ))}
         {(["all", "web_form", "web_chat", "telegram"] as const).map((c) => (
@@ -84,6 +91,7 @@ export default function InboxPage() {
                   {item.status === "manager" ? " · менеджер" : item.status === "closed" ? " · закрыто" : ""}
                 </span>
                 {item.urgent && <span className="urgent-badge">срочно</span>}
+                {item.stale && <span className="urgent-badge">завис</span>}
               </div>
             </Link>
           </li>

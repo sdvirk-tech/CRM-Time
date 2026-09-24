@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { DayOverview, DayStats } from "@/components/DayOverview";
 
 type Lead = {
   id: string;
@@ -24,11 +25,13 @@ const columns = [
 export default function LeadsPage() {
   const [items, setItems] = useState<Lead[]>([]);
   const [newCount, setNewCount] = useState(0);
+  const [stats, setStats] = useState<DayStats | null>(null);
 
   async function load() {
-    const d = await fetch("/api/leads").then((r) => r.json());
+    const [d, day] = await Promise.all([fetch("/api/leads").then((r) => r.json()), fetch("/api/stats").then((r) => r.json())]);
     setItems(d.items ?? []);
     setNewCount(d.newCount ?? 0);
+    setStats(day);
   }
 
   useEffect(() => {
@@ -44,6 +47,7 @@ export default function LeadsPage() {
     <main className="p-8">
       <h1 className="text-3xl font-semibold">Очередь лидов</h1>
       <p className="mt-2 text-muted">Новые: {newCount}</p>
+      <DayOverview stats={stats} onSla={load} />
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col) => (
           <section key={col.key} className="rounded-2xl border border-accent bg-mist p-3">

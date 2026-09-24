@@ -20,6 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [unread, setUnread] = useState(0);
   const [newLeads, setNewLeads] = useState(0);
   const [urgent, setUrgent] = useState(0);
+  const [stale, setStale] = useState(0);
   const [user, setUser] = useState<{ name: string; role: string; workspaceName: string | null } | null>(null);
 
   useEffect(() => {
@@ -36,6 +37,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         setUnread(d.unread ?? 0);
         setNewLeads(d.newLeads ?? 0);
         setUrgent(d.urgent ?? 0);
+        setStale(d.stale ?? 0);
       })
       .catch(() => {});
   }, [path, router]);
@@ -80,6 +82,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {urgent > 0 && (
           <Link href="/inbox?filter=urgent" className="block border-b border-urgent/40 bg-urgent/15 px-6 py-2 text-sm">
             Срочно: {urgent} — дефолт модели, сбой AI, лимит ИИ или клиент просит человека. Открыть входящие.
+          </Link>
+        )}
+        {stale > 0 && (
+          <Link href="/inbox?filter=stale" className="block border-b border-urgent/40 bg-urgent/15 px-6 py-2 text-sm">
+            Зависли без ответа: {stale} — клиент ждёт дольше SLA. Открыть входящие.
           </Link>
         )}
         {children}

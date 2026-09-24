@@ -25,6 +25,7 @@ services:
     environment:
       DATABASE_URL: postgresql://crm:crm@db:5432/crm
       APP_URL: ${APP_URL:-http://localhost:3000}
+      PUBLIC_URL: ${PUBLIC_URL:-}
       DEPLOY_MODE: ${DEPLOY_MODE:-saas}
     depends_on:
       db:

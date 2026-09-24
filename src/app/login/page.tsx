@@ -5,8 +5,11 @@ import { useEffect, useState } from "react";
 
 export default function LoginPage() {
   const [box, setBox] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
+    const err = new URLSearchParams(window.location.search).get("error");
+    if (err) setError(err);
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => {
@@ -34,6 +37,7 @@ export default function LoginPage() {
         <button type="submit" className="w-full rounded bg-accent px-4 py-2.5 text-ink">
           Войти
         </button>
+        {error && <p className="text-sm text-urgent">{error}</p>}
       </form>
       {!box && (
         <p className="mt-6 text-sm text-muted">

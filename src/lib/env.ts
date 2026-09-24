@@ -7,7 +7,11 @@ export function deployMode(): "saas" | "box" {
 }
 
 export function appUrl(): string {
-  return env("APP_URL", "http://localhost:3000").replace(/\/$/, "");
+  return (env("PUBLIC_URL") || env("APP_URL") || "http://localhost:3000").replace(/\/$/, "");
+}
+
+export function publicUrl(): string {
+  return appUrl();
 }
 
 export function appSecret(): string {

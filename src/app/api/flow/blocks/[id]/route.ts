@@ -4,6 +4,9 @@ import { withOwner } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
 import { asConfig } from "@/lib/workspace";
 import { encryptSecret } from "@/lib/crypto";
+import { decryptSecret } from "@/lib/crypto";
+import { publicUrl } from "@/lib/env";
+import { telegramSetWebhook } from "@/lib/telegram";
 import { z } from "zod";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -41,7 +44,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
       if (parsed.data.enabled !== undefined) data.enabled = parsed.data.enabled;
       if (parsed.data.topicId !== undefined) data.topicId = parsed.data.topicId;
       if (Object.keys(data).length) {
-        await prisma.channel.update({ where: { id: cfg.channelId }, data });
+        const updatedChannel = await prisma.channel.update({ where: { id: cfg.channelId }, data });
+        if (parsed.data.token && updatedChannel.type === "telegram" && updatedChannel.secretsEnc) {
+          try {
+            await telegramSetWebhook(
+              decryptSecret(updatedChannel.secretsEnc),
+              `${publicUrl()}/api/ingest/telegram/${updatedChannel.publicKey}`,
+            );
+          } catch {
+            /* localhost без HTTPS — ок, кнопка перерегистрации покажет ответ Telegram */
+          }
+        }
       }
     }
 

@@ -29,13 +29,18 @@ export default function LogPage() {
   return (
     <main className="p-8">
       <h1 className="text-3xl font-semibold">Журнал</h1>
-      <p className="mt-2 text-muted">События линии: вход, handoff, взять, ошибки. Без CSV.</p>
-      <input
-        className="mt-4 max-w-md rounded border border-line bg-slot px-3 py-2"
-        placeholder="Поиск"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-      />
+      <p className="mt-2 text-muted">События линии: вход, handoff, взять, ошибки.</p>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <input
+          className="max-w-md rounded border border-line bg-slot px-3 py-2"
+          placeholder="Поиск"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <a className="rounded border border-accent bg-paper px-3 py-2 text-sm" href="/api/log?format=csv">
+          Скачать CSV
+        </a>
+      </div>
       <table className="mt-6 w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line bg-mist text-left text-ink">

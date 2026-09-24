@@ -3,9 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { withOwner } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
-import { telegramGetMe } from "@/lib/telegram";
+import { telegramGetMe, telegramSetWebhook } from "@/lib/telegram";
 import { ingestInbound } from "@/lib/pipeline";
-import { appUrl } from "@/lib/env";
+import { publicUrl } from "@/lib/env";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -21,17 +21,24 @@ export async function POST(req: Request, ctx: Ctx) {
     if (channel.type === "telegram") {
       if (!channel.secretsEnc) return jsonError("Сначала сохраните токен");
       const token = decryptSecret(channel.secretsEnc);
-      const me = await telegramGetMe(token);
+      let me: { username?: string } | null = null;
       try {
-        await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: `${appUrl()}/api/ingest/telegram/${channel.publicKey}` }),
-        });
-      } catch {
-        /* webhook может быть недоступен локально */
+        me = (await telegramGetMe(token)) ?? null;
+      } catch (e) {
+        return jsonError(e instanceof Error ? e.message : "Telegram getMe не ок");
       }
-      return NextResponse.json({ ok: true, username: me?.username ?? null });
+      let hook = { ok: false, description: "", url: `${publicUrl()}/api/ingest/telegram/${channel.publicKey}` };
+      try {
+        hook = await telegramSetWebhook(token, hook.url);
+      } catch (e) {
+        hook = { ...hook, description: e instanceof Error ? e.message : "Telegram недоступен" };
+      }
+      return NextResponse.json({
+        ok: true,
+        username: me?.username ?? null,
+        webhook: hook,
+        publicUrl: publicUrl(),
+      });
     }
 
     if (channel.type === "web_form") {

@@ -20,7 +20,8 @@ docker compose up --build
 |---|---|
 | `DEPLOY_MODE=saas` | много воркспейсов, публичная регистрация |
 | `DEPLOY_MODE=box` | публичная регистрация выключена после первого владельца, один воркспейс |
-| `APP_URL` | публичный URL (webhook Telegram, сниппет формы) |
+| `APP_URL` | публичный URL (сниппеты, ссылки). Если задан `PUBLIC_URL` — берём его |
+| `PUBLIC_URL` | HTTPS-адрес для Telegram webhook; кнопка «Перерегистрировать webhook» на слоте |
 | `APP_SECRET` | JWT и шифрование токенов бота |
 | `DATABASE_URL` | в Compose задаётся на `db` автоматически |
 | `JEV_API_KEY` / `QWEN_API_KEY` / `OPENAI_API_KEY` | слот модели доступен; нет ключа — серый, приложение живо |

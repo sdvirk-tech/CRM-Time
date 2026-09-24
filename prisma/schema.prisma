@@ -8,12 +8,14 @@ datasource db {
 }
 
 model User {
-  id           String            @id @default(cuid())
-  email        String            @unique
-  passwordHash String
-  name         String
-  createdAt    DateTime          @default(now()) @map("created_at")
-  updatedAt    DateTime          @updatedAt @map("updated_at")
+  id             String            @id @default(cuid())
+  email          String            @unique
+  passwordHash   String
+  name           String
+  loginFailCount Int               @default(0) @map("login_fail_count")
+  lockedUntil    DateTime?         @map("locked_until")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
   memberships  WorkspaceMember[]
   assignedLeads Lead[]           @relation("LeadAssignee")
   assignedConversations Conversation[] @relation("ConversationAssignee")
@@ -26,6 +28,7 @@ model Workspace {
   tradeDescription String            @default("") @map("trade_description")
   defaultModel     String?           @map("default_model")
   greeting         String            @default("Здравствуйте! Напишите задачу или попросите менеджера.")
+  slaMinutes       Int               @default(15) @map("sla_minutes")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   members          WorkspaceMember[]
