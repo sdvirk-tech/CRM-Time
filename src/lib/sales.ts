@@ -143,9 +143,16 @@ export function extractCargoFromText(text: string): CargoExtract {
   );
   if (eta) out.eta = eta[1].trim();
   const cargoBit = text.match(
-    /(?:груз|товар|модул|памят|контейнер|смартфон|калькулятор)[^.\n]{0,120}/i,
+    /(?:груз|товар)\s*[:\s]+([^\n]{8,280})/i,
   );
-  if (cargoBit) out.cargo = cargoBit[0].trim();
+  if (cargoBit) {
+    out.cargo = cargoBit[0]
+      .replace(/\s+(?:Вес|вес|объ[её]м|Отправка|отправка|Приоритет|Срок|Телефон|телеграм).*$/u, "")
+      .trim();
+  } else {
+    const alt = text.match(/(?:модул|памят|смартфон|калькулятор)[^\n]{0,160}/i);
+    if (alt) out.cargo = alt[0].trim();
+  }
   out.ready = Boolean(out.cargo && (out.phone || out.telegram) && (out.origin || out.destination));
   out.summary = text.slice(0, 240);
   return out;

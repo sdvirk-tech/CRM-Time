@@ -178,11 +178,14 @@ export async function runModel(opts: {
           `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.`,
         );
       }
-      if (!/цб|курс/i.test(opts.user) && cargo.cargo) {
+      if (!/^\s*(цб|курс|официальн)/i.test(opts.user.split("клиент:").pop() || opts.user) && cargo.cargo) {
         return sanitizeModelText(
           `<think>не клиенту</think>${byBook}${tag}Принял: ${cargo.cargo}${cargo.route ? `, ${cargo.route}` : ""}. Курс для расчёта — ЦБ РФ на сегодня или ваш расчётный?`,
         );
       }
+      return sanitizeModelText(
+        `<think>не клиенту</think>${byBook}${tag}Данные по грузу есть. Напишите курс ЦБ или своё число — тогда ориентир. К какому месяцу груз должен быть в городе назначения?`,
+      );
     }
     return sanitizeModelText(
       `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
