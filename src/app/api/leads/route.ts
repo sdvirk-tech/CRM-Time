@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { csvBody } from "@/lib/csv";
 import { leadStatusLabel, sourceLabel } from "@/lib/labels";
+import { dlpLead, maskPii, maskPhoneIf, shouldMask } from "@/lib/dlp";
 
 export async function GET(req: Request) {
   return withSession(async (session) => {
@@ -20,6 +21,7 @@ export async function GET(req: Request) {
     });
     const newCount = leads.filter((l) => l.status === "new").length;
     const format = new URL(req.url).searchParams.get("format");
+    const mask = shouldMask(session.role);
     if (format === "csv") {
       const header = [
         "id",
@@ -43,9 +45,12 @@ export async function GET(req: Request) {
           l.urgent ? "да" : "",
           l.assignee?.name || "",
           l.contact.name,
-          l.contact.phone || "",
-          l.comment,
-          ...fields.map((f) => bag[f.key] || ""),
+          mask ? maskPhoneIf(session.role, l.contact.phone) : l.contact.phone || "",
+          mask ? maskPii(l.comment) : l.comment,
+          ...fields.map((f) => {
+            const raw = bag[f.key] || "";
+            return mask ? (f.fieldType === "phone" ? maskPhoneIf(session.role, raw) : maskPii(raw)) : raw;
+          }),
         ];
       });
       return new NextResponse(csvBody(header, rows), {
@@ -57,7 +62,7 @@ export async function GET(req: Request) {
     }
     return NextResponse.json({
       newCount,
-      items: leads.map((l) => ({
+      items: leads.map((l) => dlpLead(session.role, {
         id: l.id,
         status: l.status,
         source: l.source,

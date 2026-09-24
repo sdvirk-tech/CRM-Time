@@ -5,6 +5,7 @@ import { jsonError } from "@/lib/auth";
 import { deliverOutbound } from "@/lib/outbound";
 import { logActivity } from "@/lib/activity";
 import { z } from "zod";
+import { dlpContact, dlpMessageBody } from "@/lib/dlp";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -29,6 +30,8 @@ export async function GET(_req: Request, ctx: Ctx) {
     });
     return NextResponse.json({
       ...conv,
+      contact: dlpContact(session.role, conv.contact),
+      messages: conv.messages.map((m) => ({ ...m, body: dlpMessageBody(session.role, m.body) })),
       operators: members.map((m) => ({ userId: m.userId, name: m.user.name, role: m.role })),
     });
   });

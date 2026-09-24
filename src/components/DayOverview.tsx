@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 
 export type DayStats = {
   unread: number;
@@ -9,6 +10,10 @@ export type DayStats = {
   stale: number;
   slaMinutes: number;
   today: { inbound: number; leads: number; outbound: number };
+  funnel?: { new: number; in_progress: number; qualified: number; rejected: number };
+  conversion?: number;
+  taken?: number;
+  managers?: { userId?: string; name: string; taken: number; qualified: number; conversion: number; assigned: number }[];
   role?: string;
 };
 
@@ -38,6 +43,7 @@ export function DayOverview({ stats, onSla }: { stats: DayStats | null; onSla?: 
   }
 
   if (!stats) return null;
+  const f = stats.funnel;
   return (
     <section className="mt-4 rounded border border-accent bg-paper p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink">За сутки</p>
@@ -48,6 +54,26 @@ export function DayOverview({ stats, onSla }: { stats: DayStats | null; onSla?: 
         Сейчас: без ответа {stats.unread} · новые лиды {stats.newLeads} · срочно {stats.urgent} · завис {stats.stale}
         <span className="block text-xs">Молчит клиент после нашего ответа — тоже завис. Черновик пинга — по кнопке «Отправить», если нет явной модели на слоте пинга.</span>
       </p>
+      {f && (
+        <p className="mt-2 text-sm">
+          Воронка: новый {f.new} · в работе {f.in_progress} · квалиф. {f.qualified} · отказ {f.rejected}
+          {" · "}
+          взяли→квалиф. {stats.conversion ?? 0}%
+          {" · "}
+          <Link className="link" href="/stats">
+            KPI
+          </Link>
+        </p>
+      )}
+      {stats.managers && stats.managers.length > 0 && (
+        <p className="mt-1 text-xs text-muted">
+          Менеджеры:{" "}
+          {stats.managers
+            .filter((m) => m.assigned > 0 || m.taken > 0)
+            .map((m) => `${m.name} ${m.qualified}/${m.taken || m.assigned}`)
+            .join(" · ") || "пока без взятых"}
+        </p>
+      )}
       {owner && (
         <form onSubmit={saveSla} className="mt-3 flex flex-wrap items-end gap-2 text-sm">
           <label>

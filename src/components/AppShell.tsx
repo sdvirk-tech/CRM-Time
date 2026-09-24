@@ -8,6 +8,7 @@ const nav = [
   { href: "/flow", label: "Цепочка" },
   { href: "/inbox", label: "Входящие" },
   { href: "/leads", label: "Лиды" },
+  { href: "/stats", label: "Обзор" },
   { href: "/knowledge", label: "Знания" },
   { href: "/log", label: "Журнал" },
   { href: "/fields", label: "Поля" },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
+import { maskPii, shouldMask } from "@/lib/dlp";
 
 function csvCell(value: string) {
   if (/[",\n;]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
@@ -14,10 +15,12 @@ export async function GET(req: Request) {
       orderBy: { createdAt: "desc" },
       take: 200,
     });
+    const mask = shouldMask(session.role);
+    const safe = items.map((i) => ({ ...i, message: mask ? maskPii(i.message) : i.message }));
     const format = new URL(req.url).searchParams.get("format");
     if (format === "csv") {
       const header = "время,событие,кто,сообщение";
-      const rows = items.map((i) =>
+      const rows = safe.map((i) =>
         [
           csvCell(i.createdAt.toISOString()),
           csvCell(i.event),
@@ -33,6 +36,6 @@ export async function GET(req: Request) {
         },
       });
     }
-    return NextResponse.json({ items });
+    return NextResponse.json({ items: safe });
   });
 }

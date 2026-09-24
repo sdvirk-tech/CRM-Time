@@ -5,6 +5,8 @@ import { jsonError } from "@/lib/auth";
 import { z } from "zod";
 import { csvBody } from "@/lib/csv";
 import { leadStatusLabel, sourceLabel } from "@/lib/labels";
+import { cargoCardPdf } from "@/lib/pdf";
+import { dlpLead, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -22,19 +24,25 @@ export async function GET(req: Request, ctx: Ctx) {
     });
     if (!lead) return jsonError("Лид не найден", 404);
     const format = new URL(req.url).searchParams.get("format");
+    const values = lead.contact.fieldValues.length ? lead.contact.fieldValues : lead.fieldValues;
+    const phone = maskPhoneIf(session.role, lead.contact.phone);
+    const comment = shouldMask(session.role) ? maskPii(lead.comment) : lead.comment;
+    const fieldRows = values.map((v) => [
+      v.field.name,
+      shouldMask(session.role) ? (v.field.fieldType === "phone" ? maskPhoneIf(session.role, v.value) : maskPii(v.value)) : v.value,
+    ]);
     if (format === "csv") {
-      const values = lead.contact.fieldValues.length ? lead.contact.fieldValues : lead.fieldValues;
       const header = ["поле", "значение"];
       const rows: (string | number | null)[][] = [
         ["id", lead.id],
         ["имя", lead.contact.name],
-        ["телефон", lead.contact.phone],
+        ["телефон", phone],
         ["статус", leadStatusLabel(lead.status)],
         ["источник", sourceLabel(lead.source, "long")],
         ["срочно", lead.urgent ? "да" : ""],
         ["ответственный", lead.assignee?.name || ""],
-        ["комментарий", lead.comment],
-        ...values.map((v) => [v.field.name, v.value]),
+        ["комментарий", comment],
+        ...fieldRows,
       ];
       return new NextResponse(csvBody(header, rows), {
         headers: {
@@ -43,7 +51,28 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
-    return NextResponse.json(lead);
+    if (format === "pdf") {
+      const pdf = cargoCardPdf({
+        title: "Карточка груза",
+        rows: [
+          ["имя", lead.contact.name],
+          ["телефон", phone || ""],
+          ["статус", leadStatusLabel(lead.status)],
+          ["источник", sourceLabel(lead.source, "long")],
+          ["срочно", lead.urgent ? "да" : ""],
+          ["ответственный", lead.assignee?.name || ""],
+          ["комментарий", comment || ""],
+          ...fieldRows.map(([k, v]) => [String(k), String(v)] as [string, string]),
+        ],
+      });
+      return new NextResponse(new Uint8Array(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename=lead-${lead.id}.pdf`,
+        },
+      });
+    }
+    return NextResponse.json(dlpLead(session.role, lead));
   });
 }
 

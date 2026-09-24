@@ -1,3 +1,5 @@
+import { retrieveKnowledgeChunks } from "./rag";
+
 export function isStartCommand(body: string): boolean {
   return /^\/start\b/i.test(body.trim());
 }
@@ -26,22 +28,8 @@ export function extractPhone(text: string): string | null {
   return null;
 }
 
-export function pickKnowledge<T extends { title: string; body: string }>(articles: T[], query: string, limit = 6): T[] {
-  if (!articles.length) return [];
-  const words = query
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((w) => w.length > 2);
-  if (!words.length) return articles.slice(0, limit);
-  const scored = articles
-    .map((a) => {
-      const hay = `${a.title}\n${a.body}`.toLowerCase();
-      const score = words.filter((w) => hay.includes(w)).length;
-      return { a, score };
-    })
-    .sort((x, y) => y.score - x.score);
-  const hits = scored.filter((s) => s.score > 0).map((s) => s.a);
-  return (hits.length ? hits : articles).slice(0, limit);
+export function pickKnowledge<T extends { title: string; body: string }>(articles: T[], query: string, limit = 4): T[] {
+  return retrieveKnowledgeChunks(articles, query, limit) as T[];
 }
 
 export function sanitizeModelText(text: string): string {

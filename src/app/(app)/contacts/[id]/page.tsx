@@ -38,6 +38,10 @@ export default function ContactPage() {
         <a className="link" href={`/api/contacts/${contact.id}?format=csv`}>
           Скачать CSV карточки
         </a>
+        {" · "}
+        <a className="link" href={`/api/contacts/${contact.id}?format=pdf`}>
+          PDF карточки
+        </a>
       </p>
       <p className="mt-4 max-w-xl text-sm">{contact.comment}</p>
       <section className="mt-8">

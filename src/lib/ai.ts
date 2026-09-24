@@ -176,31 +176,32 @@ export async function runModel(opts: {
       );
     }
     const byBook = opts.system.includes("--- знания ---") ? "По методике. " : "";
+    const ragHit = opts.system.includes("RAG_CHUNK_MARKER") ? "RAG_CHUNK_MARKER. " : "";
     const tag = isB ? "модель B. " : "";
     const sales = /Ты МАКС|код ТН ВЭД|карточка/i.test(opts.system);
     if (sales) {
       if (opts.system.includes("COMMERCIAL_DRAFT=1") || /карточка собрана/i.test(opts.system)) {
         const cargo = extractCargoFromText(opts.user);
-        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${formatCommercialDraft(cargo)}`);
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${ragHit}${tag}${formatCommercialDraft(cargo)}`);
       }
       const byCardAsk = opts.system.match(/Спроси следующее одним предложением:\s*([^\n]+)/);
       if (byCardAsk && /Нет:/.test(opts.system) && !/Всё собрано/.test(opts.system)) {
-        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${byCardAsk[1]}`);
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${ragHit}${tag}${byCardAsk[1]}`);
       }
       const cargo = extractCargoFromText(opts.user);
       const missing = missingCardSlots(cargo);
       if (/Всё собрано/.test(opts.system) || missing.length === 0) {
-        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${formatCommercialDraft(cargo)}`);
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${ragHit}${tag}${formatCommercialDraft(cargo)}`);
       }
       if (!cargo.cargo && !cargo.weight && !cargo.route && missing.includes("cargo")) {
         return sanitizeModelText(
-          `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.`,
+          `<think>не клиенту</think>${byBook}${ragHit}${tag}Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.`,
         );
       }
-      return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${nextAsk(missing)}`);
+      return sanitizeModelText(`<think>не клиенту</think>${byBook}${ragHit}${tag}${nextAsk(missing)}`);
     }
     return sanitizeModelText(
-      `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
+      `<think>не клиенту</think>${byBook}${ragHit}${tag}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
     );
   }
 

@@ -23,10 +23,10 @@ import {
   defaultGreeting,
   extractPhone,
   isStartCommand,
-  pickKnowledge,
   sanitizeModelText,
   wantsManager,
 } from "./dialog";
+import { loadKnowledgeForPrompt } from "./rag";
 
 export type IngestInput = {
   workspaceId: string;
@@ -80,7 +80,7 @@ async function markUrgent(opts: {
 function withKnowledge(base: string, articles: { title: string; body: string }[]) {
   if (!articles.length) return base;
   const block = articles.map((a) => `${a.title}\n${a.body}`).join("\n\n");
-  return `${base}\n\n--- знания ---\n${block}\n--- конец знаний ---\nОпирайся на знания и текст клиента. Не выдумывай цифры, которых нет в статьях. Спорное — к менеджеру.`;
+  return `${base}\n\n--- знания ---\n${block}\n--- конец знаний ---\nОпирайся на найденные фрагменты базы и текст клиента. Не выдумывай цифры, которых нет во фрагментах. Спорное — к менеджеру.`;
 }
 
 export async function findOrCreateContact(input: IngestInput) {
@@ -277,17 +277,7 @@ export async function ingestInbound(input: IngestInput) {
     .some((p) => !p.explicit);
   const handoff = wantsManager(input.body);
   const channelRow = await prisma.channel.findUnique({ where: { id: input.channelId } });
-  const articles = pickKnowledge(
-    await prisma.knowledgeArticle.findMany({
-      where: {
-        workspaceId: input.workspaceId,
-        enabled: true,
-        ...(channelRow?.topicId ? { topicId: channelRow.topicId } : {}),
-      },
-      orderBy: { createdAt: "asc" },
-    }),
-    input.body,
-  );
+  const articles = await loadKnowledgeForPrompt(input.workspaceId, channelRow?.topicId, input.body);
 
   let contact = await findOrCreateContact(input);
   let conversation = await prisma.conversation.findFirst({

@@ -6,6 +6,8 @@ import { normalizePhone } from "@/lib/validators";
 import { z } from "zod";
 import { csvBody } from "@/lib/csv";
 import { channelLabel, leadStatusLabel } from "@/lib/labels";
+import { cargoCardPdf } from "@/lib/pdf";
+import { dlpContact, maskEmailIf, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -23,16 +25,24 @@ export async function GET(req: Request, ctx: Ctx) {
     });
     if (!contact) return jsonError("Контакт не найден", 404);
     const format = new URL(req.url).searchParams.get("format");
+    const phone = maskPhoneIf(session.role, contact.phone);
+    const comment = shouldMask(session.role) ? maskPii(contact.comment) : contact.comment;
     if (format === "csv") {
       const header = ["поле", "значение"];
       const rows: (string | number | null)[][] = [
         ["id", contact.id],
         ["имя", contact.name],
-        ["телефон", contact.phone],
-        ["комментарий", contact.comment],
-        ...contact.channels.map((c) => [`канал ${channelLabel(c.type)}`, c.username || c.externalId]),
+        ["телефон", phone],
+        ["комментарий", comment],
+        ...contact.channels.map((c) => [
+          `канал ${channelLabel(c.type)}`,
+          c.type === "email" ? maskEmailIf(session.role, c.username || c.externalId) : c.username || c.externalId,
+        ]),
         ...contact.leads.map((l) => [`лид ${leadStatusLabel(l.status)}`, l.id]),
-        ...contact.fieldValues.map((v) => [v.field.name, v.value]),
+        ...contact.fieldValues.map((v) => [
+          v.field.name,
+          shouldMask(session.role) ? (v.field.fieldType === "phone" ? maskPhoneIf(session.role, v.value) : maskPii(v.value)) : v.value,
+        ]),
       ];
       return new NextResponse(csvBody(header, rows), {
         headers: {
@@ -41,7 +51,41 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
-    return NextResponse.json(contact);
+    if (format === "pdf") {
+      const pdf = cargoCardPdf({
+        title: "Карточка контакта",
+        rows: [
+          ["имя", contact.name],
+          ["телефон", phone || ""],
+          ["комментарий", comment || ""],
+          ...contact.channels.map(
+            (c) =>
+              [
+                `канал ${channelLabel(c.type)}`,
+                String(c.type === "email" ? maskEmailIf(session.role, c.username || c.externalId) : c.username || c.externalId || ""),
+              ] as [string, string],
+          ),
+          ...contact.fieldValues.map(
+            (v) =>
+              [
+                v.field.name,
+                shouldMask(session.role)
+                  ? v.field.fieldType === "phone"
+                    ? maskPhoneIf(session.role, v.value) || ""
+                    : maskPii(v.value)
+                  : v.value,
+              ] as [string, string],
+          ),
+        ],
+      });
+      return new NextResponse(new Uint8Array(pdf), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename=contact-${contact.id}.pdf`,
+        },
+      });
+    }
+    return NextResponse.json(dlpContact(session.role, contact));
   });
 }
 

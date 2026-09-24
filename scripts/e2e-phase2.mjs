@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Приёмка фазы 2–3: промт в UI, пинг после SLA, маршрутизация, опрос Telegram;
- * почта, несколько линейных цепочек, curl модели, CSV.
+ * почта, несколько линейных цепочек, curl модели, CSV;
+ * воронка/KPI, RAG-lite, PDF карточки, маскировка телефона/почты для менеджера.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
@@ -522,12 +523,77 @@ async function main() {
   r = await req("/api/flow", { method: "DELETE", cookie });
   assert(r.status >= 400, "delete needs id");
 
+  const kn = await req("/api/knowledge", { cookie });
+  const ved = (kn.data.topics || []).find((t) => t.name === "ВЭД");
+  assert(ved, "ved topic for rag");
+  r = await req("/api/knowledge", {
+    method: "POST",
+    cookie,
+    json: {
+      topicId: ved.id,
+      title: "LCL сборная консолидация",
+      body: "LCL сборный груз консолидация Шанхай. Маркер RAG_CHUNK_MARKER для чанков базы. Не авиа-фрахт.",
+    },
+  });
+  assert(r.status === 200, "rag article " + JSON.stringify(r.data));
+  r = await req("/api/knowledge", {
+    method: "POST",
+    cookie,
+    json: {
+      topicId: ved.id,
+      title: "Авиа тарифы XYZDECOY",
+      body: "Только авиа фрахт и ставки без консолидации LCL. Маркера сборной нет.",
+    },
+  });
+  assert(r.status === 200, "decoy article");
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: "p4-rag-" + id, name: "RAG гость", text: "нужен LCL сборный консолидация из Шанхая" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "rag ingest");
+  const ragConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const ragText = (ragConv.data.messages || []).map((m) => m.body).join("\n");
+  assert(/RAG_CHUNK_MARKER/.test(ragText), "rag chunk retrieved into reply: " + ragText.slice(0, 500));
+
+  const stats4 = await req("/api/stats", { cookie });
+  assert(stats4.status === 200 && stats4.data.funnel, "funnel payload");
+  assert(typeof stats4.data.funnel.new === "number", "funnel.new");
+  assert(stats4.data.funnel.qualified >= 1, "funnel qualified");
+  assert(typeof stats4.data.conversion === "number" && stats4.data.conversion >= 0, "conversion");
+  assert(Array.isArray(stats4.data.managers) && stats4.data.managers.length >= 1, "manager kpi");
+  assert(typeof stats4.data.unread === "number", "unanswered");
+
+  const ownerLead = await req(`/api/leads/${form1.data.leadId}`, { cookie });
+  assert(ownerLead.data.contact.phone === phone1, "owner sees full phone");
+  const mgrLead = await req(`/api/leads/${form1.data.leadId}`, { cookie: mgrACookie });
+  assert(mgrLead.status === 200, "manager can read lead");
+  assert(mgrLead.data.contact.phone !== phone1, "manager phone masked: " + mgrLead.data.contact.phone);
+  assert(/•/.test(String(mgrLead.data.contact.phone || "")), "mask uses bullets");
+  const mgrInbox = await req("/api/inbox", { cookie: mgrACookie });
+  const rr1 = (mgrInbox.data.items || []).find((i) => i.contact?.name === "Клиент RR1");
+  assert(rr1, "rr1 in manager inbox");
+  assert(rr1.contact.phone !== phone1, "inbox phone masked");
+
+  const pdf = await req(`/api/leads/${form1.data.leadId}?format=pdf`, { cookie });
+  assert(pdf.status === 200, "lead pdf status");
+  const pdfRaw = pdf.data?.raw || "";
+  assert(pdfRaw.startsWith("%PDF"), "pdf magic " + pdfRaw.slice(0, 12));
+  const ct = pdf.headers.get("content-type") || "";
+  assert(/pdf/.test(ct), "pdf content-type " + ct);
+  const pdfMgr = await req(`/api/leads/${form1.data.leadId}?format=pdf`, { cookie: mgrACookie });
+  assert(pdfMgr.status === 200 && (pdfMgr.data?.raw || "").startsWith("%PDF"), "manager pdf");
+  const csvMgr = await req(`/api/leads/${form1.data.leadId}?format=csv`, { cookie: mgrACookie });
+  assert(!new RegExp(phone1).test(csvMgr.data?.raw || ""), "csv manager hides phone");
+  const contactPdf = await req(`/api/contacts/${ownerLead.data.contactId}?format=pdf`, { cookie });
+  assert((contactPdf.data?.raw || "").startsWith("%PDF"), "contact pdf");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
     ping: "draft-then-button + explicit-auto",
     poll: tgAfter.pollOffset,
     phase3: "email+flows+model-raw+csv",
+    phase4: "funnel+rag+pdf+dlp",
   });
 }
 

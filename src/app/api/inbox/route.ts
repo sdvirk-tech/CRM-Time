@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { isStale, lastByDirection } from "@/lib/sla";
+import { dlpContact, dlpMessageBody } from "@/lib/dlp";
 
 export async function GET() {
   return withSession(async (session) => {
@@ -40,9 +41,9 @@ export async function GET() {
         cardReady: i.leads.length > 0,
         leadId: i.leads[0]?.id ?? null,
         leadStatus: i.leads[0]?.status ?? null,
-        contact: { id: i.contact.id, name: i.contact.name, phone: i.contact.phone },
+        contact: dlpContact(session.role, { id: i.contact.id, name: i.contact.name, phone: i.contact.phone }),
         channel: { type: i.channel.type, name: i.channel.name },
-        lastMessage: i.messages[0]?.body ?? "",
+        lastMessage: dlpMessageBody(session.role, i.messages[0]?.body ?? ""),
         updatedAt: i.updatedAt,
       };
     });
