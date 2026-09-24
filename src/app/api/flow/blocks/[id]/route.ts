@@ -9,6 +9,7 @@ import { publicUrl } from "@/lib/env";
 import { telegramSetWebhook } from "@/lib/telegram";
 import { asPollConfig } from "@/lib/telegram-ingest";
 import { enableTelegramPoll, httpsWebhookAvailable } from "@/lib/telegram-poll";
+import { encodeEmailSecrets, parseEmailSecrets } from "@/lib/email";
 import { z } from "zod";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -32,6 +33,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
         provider: z.string().nullable().optional(),
         model: z.string().nullable().optional(),
         position: z.number().int().optional(),
+        fromAddress: z.string().optional(),
+        smtpHost: z.string().optional(),
+        smtpPort: z.coerce.number().int().optional(),
+        smtpUser: z.string().optional(),
+        smtpPass: z.string().optional(),
       })
       .safeParse(body);
     if (!parsed.success) return jsonError("Некорректные данные");
@@ -42,7 +48,28 @@ export async function PATCH(req: Request, ctx: Ctx) {
       const channel = await prisma.channel.findUnique({ where: { id: cfg.channelId } });
       const data: { name?: string; secretsEnc?: string; config?: object; enabled?: boolean; topicId?: string | null } = {};
       if (parsed.data.label) data.name = parsed.data.label;
-      if (parsed.data.token) data.secretsEnc = encryptSecret(parsed.data.token.trim());
+      if (channel?.type === "email") {
+        const prev = parseEmailSecrets(channel.secretsEnc);
+        const next = {
+          ...prev,
+          ...(parsed.data.fromAddress !== undefined ? { fromAddress: parsed.data.fromAddress.trim() } : {}),
+          ...(parsed.data.smtpHost !== undefined ? { smtpHost: parsed.data.smtpHost.trim() } : {}),
+          ...(parsed.data.smtpPort !== undefined ? { smtpPort: parsed.data.smtpPort } : {}),
+          ...(parsed.data.smtpUser !== undefined ? { smtpUser: parsed.data.smtpUser.trim() } : {}),
+          ...(parsed.data.smtpPass !== undefined ? { smtpPass: parsed.data.smtpPass } : {}),
+        };
+        if (
+          parsed.data.fromAddress !== undefined ||
+          parsed.data.smtpHost !== undefined ||
+          parsed.data.smtpPort !== undefined ||
+          parsed.data.smtpUser !== undefined ||
+          parsed.data.smtpPass !== undefined
+        ) {
+          data.secretsEnc = encodeEmailSecrets(next);
+        }
+      } else if (parsed.data.token) {
+        data.secretsEnc = encryptSecret(parsed.data.token.trim());
+      }
       if (parsed.data.allowedOrigins) {
         data.config = { ...asPollConfig(channel?.config), allowedOrigins: parsed.data.allowedOrigins };
       }

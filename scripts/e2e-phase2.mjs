@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Приёмка фазы 2: промт в UI, пинг после SLA, маршрутизация, опрос Telegram.
+ * Приёмка фазы 2–3: промт в UI, пинг после SLA, маршрутизация, опрос Telegram;
+ * почта, несколько линейных цепочек, curl модели, CSV.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
@@ -354,11 +355,179 @@ async function main() {
   r = await req(`/api/flow/blocks/${chatBlock.id}`, { method: "PATCH", cookie: mgrACookie, json: { label: "нет" } });
   assert(r.status === 403, "manager cannot edit flow");
 
+  r = await req("/api/flow", { method: "PATCH", cookie, json: { id: flow0.data.flow.id, name: "Сайт-чат" } });
+  assert(r.status === 200 && r.data.flow.name === "Сайт-чат", "rename flow сайт-чат");
+  r = await req("/api/flow", { method: "POST", cookie: mgrACookie, json: { name: "нет" } });
+  assert(r.status === 403, "manager cannot create flow");
+  r = await req("/api/flow", { method: "POST", cookie, json: { name: "Telegram" } });
+  assert(r.status === 200 && r.data.flow?.id, "second named flow");
+  const flowTgId = r.data.flow.id;
+  assert(r.data.flow.published === true, "new flow published");
+
+  r = await req("/api/flow/blocks", {
+    method: "POST",
+    cookie,
+    json: { kind: "channel_telegram", flowId: flowTgId },
+  });
+  assert(r.status === 200 && r.data.block?.config?.channelId, "tg on second flow " + JSON.stringify(r.data));
+  const tg2ChannelId = r.data.block.config.channelId;
+  r = await req("/api/flow/blocks", {
+    method: "POST",
+    cookie,
+    json: { kind: "ai_draft", flowId: flowTgId },
+  });
+  assert(r.status === 200, "draft on second flow");
+  const draft2Id = r.data.block.id;
+  r = await req(`/api/flow/blocks/${draft2Id}`, {
+    method: "PATCH",
+    cookie,
+    json: { provider: "mock", model: "ok-b" },
+  });
+  assert(r.status === 200, "explicit model B on telegram flow");
+
+  const flowsNamed = await req("/api/flow", { cookie });
+  assert((flowsNamed.data.flows || []).length >= 2, "two published chains");
+  assert(
+    flowsNamed.data.flows.some((f) => f.name === "Сайт-чат") && flowsNamed.data.flows.some((f) => f.name === "Telegram"),
+    "named сайт-чат and Telegram",
+  );
+  const flowTgView = await req(`/api/flow?flowId=${flowTgId}`, { cookie });
+  assert(flowTgView.data.flow.id === flowTgId, "load by flowId");
+  assert(/telegram/i.test(flowTgView.data.compact || ""), "telegram compact on second chain");
+  const tg2 = flowTgView.data.channels.find((c) => c.id === tg2ChannelId);
+  assert(tg2 && tg2.type === "telegram", "second telegram channel");
+
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: "p3-iso-chat-" + id, name: "Изоляция чат", text: "нужен контейнер из Шанхая" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "iso chat ingest");
+  const isoChat = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const chatReply = [...(isoChat.data.messages || [])].reverse().find((m) => m.direction === "outbound" || m.direction === "draft");
+  assert(chatReply && !/модель B/i.test(chatReply.body || ""), "сайт-чат flow stays model A: " + (chatReply?.body || ""));
+
+  r = await req(`/api/channels/${tg2.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: "p3-iso-tg-" + id, text: "нужен контейнер из Шанхая", name: "Изоляция TG" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "iso tg simulate");
+  const isoTg = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const tgReply = [...(isoTg.data.messages || [])].reverse().find((m) => m.direction === "outbound" || m.direction === "draft");
+  assert(tgReply && /модель B/i.test(tgReply.body || ""), "telegram flow uses model B: " + (tgReply?.body || ""));
+
+  r = await req("/api/flow", { method: "PATCH", cookie, json: { id: flowTgId, published: false } });
+  assert(r.status === 200 && r.data.flow.published === false, "unpublish second chain");
+  r = await req("/api/flow", { method: "PATCH", cookie, json: { id: flowTgId, published: true } });
+  assert(r.status === 200 && r.data.flow.published === true, "publish again");
+
+  r = await req("/api/flow/blocks", {
+    method: "POST",
+    cookie,
+    json: { kind: "channel_email", flowId: flow0.data.flow.id },
+  });
+  assert(r.status === 200 && r.data.block?.config?.channelId, "email slot " + JSON.stringify(r.data));
+  const emailBlock = r.data.block;
+  r = await req(`/api/flow/blocks/${emailBlock.id}`, {
+    method: "PATCH",
+    cookie,
+    json: { fromAddress: "inbox@pilot.example", smtpHost: "", smtpPort: 465 },
+  });
+  assert(r.status === 200, "save email mailbox");
+  const flowEmail = await req(`/api/flow?flowId=${flow0.data.flow.id}`, { cookie });
+  const emailCh = flowEmail.data.channels.find((c) => c.id === emailBlock.config.channelId);
+  assert(emailCh && emailCh.type === "email", "email channel");
+  assert(/\/api\/ingest\/email\//.test(emailCh.ingestUrl || emailCh.webhookUrl || ""), "email ingest url");
+  assert(emailCh.mailto === "mailto:inbox@pilot.example", "mailto " + emailCh.mailto);
+  assert(/почта/.test(flowEmail.data.compact || ""), "email in compact: " + flowEmail.data.compact);
+
+  const mailFrom = `client-${id}@mail.test`;
+  r = await req(`/api/ingest/email/${emailCh.publicKey}`, {
+    method: "POST",
+    json: { from: mailFrom, name: "Почта Клиент", subject: "FCA Шанхай", text: "модули памяти 20 кг" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "email ingest " + JSON.stringify(r.data));
+  assert(r.data.leadId, "email creates lead");
+  const emailConvId = r.data.conversationId;
+  const emailLeadId = r.data.leadId;
+
+  r = await req(`/api/conversations/${emailConvId}`, {
+    method: "POST",
+    cookie,
+    json: { text: "Ответ с почты CRM", send: true },
+  });
+  assert(r.status === 200 && r.data.sent === true, "email outbound from CRM");
+  const emailConv = await req(`/api/conversations/${emailConvId}`, { cookie });
+  assert(
+    (emailConv.data.messages || []).some((m) => m.direction === "outbound" && /Ответ с почты CRM/.test(m.body)),
+    "email outbound stored without SMTP",
+  );
+  assert(emailConv.data.channel?.type === "email", "conversation channel email");
+
+  r = await req(`/api/channels/${emailCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { from: `sim-${id}@mail.test`, subject: "симуляция", text: "проверка симуляции почты", name: "Симуляция почты" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "email simulate");
+
+  const formEmail = new URLSearchParams({
+    from: `form-${id}@mail.test`,
+    name: "Форма почты",
+    subject: "form-to-mailbox",
+    text: "заявка через форму",
+  });
+  r = await req(`/api/ingest/email/${emailCh.publicKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: formEmail.toString(),
+  });
+  assert(r.status === 200 && r.data.conversationId, "email form ingest");
+
+  const csv = await req("/api/leads?format=csv", { cookie });
+  assert(csv.status === 200, "leads csv status");
+  const csvText = csv.data?.raw || "";
+  assert(/Почта Клиент/.test(csvText), "csv has email lead");
+  assert(/почта/.test(csvText), "csv source почта");
+  const cardCsv = await req(`/api/leads/${emailLeadId}?format=csv`, { cookie });
+  assert(cardCsv.status === 200 && /поле/.test(cardCsv.data?.raw || ""), "lead card csv");
+  const contactId = (await req(`/api/leads/${emailLeadId}`, { cookie })).data.contactId || emailConv.data.contactId;
+  if (contactId) {
+    const contactCsv = await req(`/api/contacts/${contactId}?format=csv`, { cookie });
+    assert(contactCsv.status === 200 && /поле/.test(contactCsv.data?.raw || ""), "contact card csv");
+  }
+
+  r = await req("/api/models", {
+    method: "POST",
+    cookie,
+    json: { provider: "mock", model: "ok", user: "SAMPLE_PROMPT_PING" },
+  });
+  assert(r.status === 200 && r.data.ok === true, "model ping " + JSON.stringify(r.data));
+  assert(/SAMPLE_PROMPT_PING/.test(r.data.raw || ""), "model raw includes sample: " + (r.data.raw || ""));
+  r = await req("/api/models", {
+    method: "POST",
+    cookie,
+    json: { processId: draftProc.id, user: "проверка слота" },
+  });
+  assert(r.status === 200 && r.data.ok === true && r.data.provider === "mock", "bound process ping");
+  assert(typeof r.data.raw === "string" && r.data.raw.length > 0, "bound process raw");
+  r = await req("/api/models", { method: "POST", cookie: mgrACookie, json: { provider: "mock", model: "ok", user: "нет" } });
+  assert(r.status === 403, "manager cannot curl model");
+
+  r = await req("/api/flow", { method: "POST", cookie, json: { name: "Лишняя" } });
+  assert(r.status === 200, "temp flow");
+  const extraFlowId = r.data.flow.id;
+  r = await req(`/api/flow?id=${extraFlowId}`, { method: "DELETE", cookie });
+  assert(r.status === 200, "delete extra flow");
+  r = await req("/api/flow", { method: "DELETE", cookie });
+  assert(r.status >= 400, "delete needs id");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
     ping: "draft-then-button + explicit-auto",
     poll: tgAfter.pollOffset,
+    phase3: "email+flows+model-raw+csv",
   });
 }
 

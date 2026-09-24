@@ -48,6 +48,9 @@ export default function LeadsPage() {
     <main className="p-8">
       <h1 className="text-3xl font-semibold">Очередь лидов</h1>
       <p className="mt-2 text-muted">Новые: {newCount}</p>
+      <a className="mt-3 inline-block rounded border border-accent bg-paper px-3 py-2 text-sm" href="/api/leads?format=csv">
+        Скачать CSV
+      </a>
       <DayOverview stats={stats} onSla={load} />
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col) => (

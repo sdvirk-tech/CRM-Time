@@ -34,6 +34,11 @@ export default function ContactPage() {
     <main className="p-8">
       <h1 className="text-3xl font-semibold">{contact.name}</h1>
       <p className="mt-2 text-muted">{contact.phone || "телефон не указан"}</p>
+      <p className="mt-3">
+        <a className="link" href={`/api/contacts/${contact.id}?format=csv`}>
+          Скачать CSV карточки
+        </a>
+      </p>
       <p className="mt-4 max-w-xl text-sm">{contact.comment}</p>
       <section className="mt-8">
         <h2 className="text-xl font-semibold">Каналы</h2>

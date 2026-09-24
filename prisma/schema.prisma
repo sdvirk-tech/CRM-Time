@@ -73,6 +73,7 @@ model Flow {
   id          String      @id @default(cuid())
   workspaceId String      @map("workspace_id")
   name        String      @default("Основная цепочка")
+  published   Boolean     @default(true)
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
   workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

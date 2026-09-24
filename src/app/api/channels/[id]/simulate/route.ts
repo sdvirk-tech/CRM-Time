@@ -13,7 +13,33 @@ export async function POST(req: Request, ctx: Ctx) {
     const channel = await prisma.channel.findFirst({
       where: { id, workspaceId: session.workspaceId },
     });
-    if (!channel || channel.type !== "telegram") return jsonError("Нужен канал Telegram", 404);
+    if (!channel || (channel.type !== "telegram" && channel.type !== "email")) {
+      return jsonError("Нужен канал Telegram или почта", 404);
+    }
+    if (channel.type === "email") {
+      const parsed = z
+        .object({
+          from: z.string().min(3),
+          text: z.string().min(1),
+          name: z.string().optional(),
+          subject: z.string().optional(),
+        })
+        .safeParse(await req.json().catch(() => null));
+      if (!parsed.success) return jsonError("Нужны from и text");
+      const body = [parsed.data.subject && `Тема: ${parsed.data.subject}`, `От: ${parsed.data.from}`, parsed.data.text]
+        .filter(Boolean)
+        .join("\n");
+      const result = await ingestInbound({
+        workspaceId: session.workspaceId,
+        channelId: channel.id,
+        source: "email",
+        externalId: parsed.data.from.toLowerCase(),
+        username: parsed.data.from,
+        name: parsed.data.name || parsed.data.from.split("@")[0],
+        body,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
     const parsed = z
       .object({
         chatId: z.string().min(1),

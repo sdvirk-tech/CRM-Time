@@ -1,6 +1,6 @@
 import { prisma } from "./prisma";
 import { logActivity } from "./activity";
-import { asConfig } from "./workspace";
+import { asConfig, defaultProcessPrompt, flowForChannel } from "./workspace";
 import { parseBinding, runModel } from "./ai";
 import { validateField } from "./validators";
 import {
@@ -16,7 +16,6 @@ import {
   withCardState,
   withCommercialDraft,
 } from "./sales";
-import { defaultProcessPrompt } from "./workspace";
 import { deliverOutbound } from "./outbound";
 import { pickAssignee } from "./routing";
 import {
@@ -32,7 +31,7 @@ import {
 export type IngestInput = {
   workspaceId: string;
   channelId: string;
-  source: "web_form" | "telegram" | "web_chat";
+  source: "web_form" | "telegram" | "web_chat" | "email";
   externalId: string;
   username?: string;
   name?: string;
@@ -154,14 +153,21 @@ type ProcessRun = {
   fallback: { provider: string; model: string } | null;
 };
 
-async function loadProcesses(workspaceId: string): Promise<ProcessRun[]> {
-  const flow = await prisma.flow.findFirst({
-    where: { workspaceId },
-    include: { blocks: { orderBy: { position: "asc" } } },
-  });
+async function loadProcesses(workspaceId: string, channelId?: string): Promise<ProcessRun[]> {
+  const flow = channelId
+    ? await flowForChannel(workspaceId, channelId)
+    : await prisma.flow.findFirst({
+        where: { workspaceId },
+        include: { blocks: { orderBy: { position: "asc" } } },
+        orderBy: { createdAt: "asc" },
+      });
   if (!flow) return [];
+  const blocks = "blocks" in flow && Array.isArray(flow.blocks) ? flow.blocks : await prisma.flowBlock.findMany({
+    where: { flowId: flow.id },
+    orderBy: { position: "asc" },
+  });
   const out: ProcessRun[] = [];
-  for (const block of flow.blocks) {
+  for (const block of blocks) {
     if (block.type !== "ai_process") continue;
     const cfg = asConfig(block.config);
     if (!cfg.aiProcessId) continue;
@@ -265,7 +271,7 @@ export async function ingestInbound(input: IngestInput) {
     }
   }
 
-  const processes = await loadProcesses(input.workspaceId);
+  const processes = await loadProcesses(input.workspaceId, input.channelId);
   const needsWatch = processes
     .filter((p) => p.type === "parse_inbound" || p.type === "draft_reply")
     .some((p) => !p.explicit);
@@ -518,7 +524,7 @@ export async function ingestInbound(input: IngestInput) {
   const missing = missingCardSlots(snap);
   const cardComplete = isCardComplete(snap);
 
-  const shouldCreateLead = input.source === "web_form" || handoff || cardComplete;
+  const shouldCreateLead = input.source === "web_form" || input.source === "email" || handoff || cardComplete;
   let leadId: string | null = null;
   if (shouldCreateLead) {
     const existing =

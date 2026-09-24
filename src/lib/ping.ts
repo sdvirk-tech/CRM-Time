@@ -13,31 +13,44 @@ function explicit(provider?: string | null, model?: string | null) {
   return { provider, model };
 }
 
-async function pingProcess(workspaceId: string) {
-  const flow = await prisma.flow.findFirst({
+async function pingProcess(workspaceId: string, channelId?: string) {
+  const flows = await prisma.flow.findMany({
     where: { workspaceId },
     include: { blocks: true },
+    orderBy: { createdAt: "asc" },
   });
-  if (!flow) return null;
-  for (const block of flow.blocks) {
-    if (block.type !== "ai_process") continue;
-    const cfg = asConfig(block.config);
-    if (cfg.processType !== "client_ping" || !cfg.aiProcessId) continue;
-    const proc = await prisma.aiProcess.findUnique({
-      where: { id: cfg.aiProcessId },
-      include: { binding: true },
-    });
-    if (!proc) continue;
-    return {
-      prompt: proc.prompt || PING_PROMPT,
-      explicit: explicit(proc.binding?.provider, proc.binding?.model),
-    };
+  const ranked = channelId
+    ? [
+        ...flows.filter((f) =>
+          f.blocks.some((b) => b.type === "channel" && asConfig(b.config).channelId === channelId),
+        ),
+        ...flows,
+      ]
+    : flows;
+  const seen = new Set<string>();
+  for (const flow of ranked) {
+    if (seen.has(flow.id)) continue;
+    seen.add(flow.id);
+    for (const block of flow.blocks) {
+      if (block.type !== "ai_process") continue;
+      const cfg = asConfig(block.config);
+      if (cfg.processType !== "client_ping" || !cfg.aiProcessId) continue;
+      const proc = await prisma.aiProcess.findUnique({
+        where: { id: cfg.aiProcessId },
+        include: { binding: true },
+      });
+      if (!proc) continue;
+      return {
+        prompt: proc.prompt || PING_PROMPT,
+        explicit: explicit(proc.binding?.provider, proc.binding?.model),
+      };
+    }
   }
   return null;
 }
 
-async function draftPingText(workspaceId: string, history: string) {
-  const ping = await pingProcess(workspaceId);
+async function draftPingText(workspaceId: string, history: string, channelId?: string) {
+  const ping = await pingProcess(workspaceId, channelId);
   const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
   const binding = ping?.explicit ?? parseBinding(ws?.defaultModel) ?? { provider: "mock", model: "ok" };
   try {
@@ -60,7 +73,6 @@ export async function runFollowups(workspaceId?: string) {
   let sent = 0;
   let reminded = 0;
   for (const ws of workspaces) {
-    const ping = await pingProcess(ws.id);
     const convs = await prisma.conversation.findMany({
       where: { workspaceId: ws.id, status: { not: "closed" } },
       include: {
@@ -72,6 +84,7 @@ export async function runFollowups(workspaceId?: string) {
     });
     for (const conv of convs) {
       if (conv.pingSentAt) continue;
+      const ping = await pingProcess(ws.id, conv.channelId);
       const lastIn = lastByDirection(conv.messages, "inbound");
       const lastOut = lastByDirection(conv.messages, "outbound");
       if (!lastOut) continue;
@@ -110,7 +123,7 @@ export async function runFollowups(workspaceId?: string) {
       let draftBody: string | null = null;
       if (!conv.pingDraftedAt) {
         const history = [...conv.messages].reverse().map((m) => `${m.direction}: ${m.body}`).join("\n");
-        draftBody = await draftPingText(ws.id, history);
+        draftBody = await draftPingText(ws.id, history, conv.channelId);
         await prisma.message.create({
           data: {
             workspaceId: ws.id,

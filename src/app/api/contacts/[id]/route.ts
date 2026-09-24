@@ -4,10 +4,12 @@ import { withSession } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
 import { normalizePhone } from "@/lib/validators";
 import { z } from "zod";
+import { csvBody } from "@/lib/csv";
+import { channelLabel, leadStatusLabel } from "@/lib/labels";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-export async function GET(_req: Request, ctx: Ctx) {
+export async function GET(req: Request, ctx: Ctx) {
   return withSession(async (session) => {
     const { id } = await ctx.params;
     const contact = await prisma.contact.findFirst({
@@ -20,6 +22,25 @@ export async function GET(_req: Request, ctx: Ctx) {
       },
     });
     if (!contact) return jsonError("Контакт не найден", 404);
+    const format = new URL(req.url).searchParams.get("format");
+    if (format === "csv") {
+      const header = ["поле", "значение"];
+      const rows: (string | number | null)[][] = [
+        ["id", contact.id],
+        ["имя", contact.name],
+        ["телефон", contact.phone],
+        ["комментарий", contact.comment],
+        ...contact.channels.map((c) => [`канал ${channelLabel(c.type)}`, c.username || c.externalId]),
+        ...contact.leads.map((l) => [`лид ${leadStatusLabel(l.status)}`, l.id]),
+        ...contact.fieldValues.map((v) => [v.field.name, v.value]),
+      ];
+      return new NextResponse(csvBody(header, rows), {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename=contact-${contact.id}.csv`,
+        },
+      });
+    }
     return NextResponse.json(contact);
   });
 }

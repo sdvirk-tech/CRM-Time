@@ -10,6 +10,7 @@ export async function POST(_req: Request, ctx: Ctx) {
     const { id } = await ctx.params;
     const conv = await prisma.conversation.findFirst({
       where: { id, workspaceId: session.workspaceId },
+      include: { channel: true },
     });
     if (!conv) return jsonError("Диалог не найден", 404);
     const existing = await prisma.lead.findFirst({
@@ -22,7 +23,9 @@ export async function POST(_req: Request, ctx: Ctx) {
         contactId: conv.contactId,
         conversationId: conv.id,
         status: "new",
-        source: "telegram",
+        source: conv.channel.type === "web_form" || conv.channel.type === "web_chat" || conv.channel.type === "email"
+          ? conv.channel.type
+          : "telegram",
         urgent: conv.urgent,
         assigneeId: session.userId,
       },

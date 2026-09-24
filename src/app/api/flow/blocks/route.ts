@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withOwner } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
-import { asConfig, bindVedTopic, defaultProcessPrompt, ensureWorkspaceFlow, publicKey } from "@/lib/workspace";
+import { asConfig, bindVedTopic, defaultProcessPrompt, getWorkspaceFlow, publicKey } from "@/lib/workspace";
 import { z } from "zod";
 
 const schema = z.object({
@@ -10,6 +10,7 @@ const schema = z.object({
     "channel_web_form",
     "channel_telegram",
     "channel_web_chat",
+    "channel_email",
     "ai_parse",
     "ai_draft",
     "ai_deep",
@@ -17,6 +18,7 @@ const schema = z.object({
     "action_create_lead",
     "action_show_draft",
   ]),
+  flowId: z.string().optional(),
 });
 
 export async function POST(req: Request) {
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
     const parsed = schema.safeParse(body);
     if (!parsed.success) return jsonError("Неизвестный слот");
-    const flow = await ensureWorkspaceFlow(session.workspaceId);
+    const flow = await getWorkspaceFlow(session.workspaceId, parsed.data.flowId);
     const last = await prisma.flowBlock.aggregate({
       where: { flowId: flow.id },
       _max: { position: true },
@@ -35,15 +37,23 @@ export async function POST(req: Request) {
     if (
       parsed.data.kind === "channel_web_form" ||
       parsed.data.kind === "channel_telegram" ||
-      parsed.data.kind === "channel_web_chat"
+      parsed.data.kind === "channel_web_chat" ||
+      parsed.data.kind === "channel_email"
     ) {
       const type =
         parsed.data.kind === "channel_web_form"
           ? "web_form"
           : parsed.data.kind === "channel_web_chat"
             ? "web_chat"
-            : "telegram";
-      const names = { web_form: "Форма сайта", web_chat: "Чат на сайте", telegram: "Telegram" } as const;
+            : parsed.data.kind === "channel_email"
+              ? "email"
+              : "telegram";
+      const names = {
+        web_form: "Форма сайта",
+        web_chat: "Чат на сайте",
+        telegram: "Telegram",
+        email: "Почта",
+      } as const;
       const channel = await prisma.channel.create({
         data: {
           workspaceId: ws,
@@ -53,7 +63,7 @@ export async function POST(req: Request) {
           config: { allowedOrigins: [] },
         },
       });
-      if (type === "telegram" || type === "web_chat") {
+      if (type === "telegram" || type === "web_chat" || type === "email") {
         await bindVedTopic(ws, channel.id);
       }
       const block = await prisma.flowBlock.create({

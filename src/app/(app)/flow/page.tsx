@@ -12,12 +12,18 @@ type Channel = {
   formUrl?: string;
   chatUrl?: string;
   webhookUrl?: string;
+  ingestUrl?: string;
+  mailto?: string;
+  fromAddress?: string;
   hasToken: boolean;
   enabled: boolean;
   topicId?: string | null;
   allowedOrigins: string[];
   pollMode?: boolean;
   pollOffset?: number;
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpUser?: string;
 };
 type Topic = { id: string; name: string };
 type Process = {
@@ -46,6 +52,7 @@ const palette = [
   { kind: "channel_web_form", group: "Канал", label: "Форма сайта" },
   { kind: "channel_web_chat", group: "Канал", label: "Чат на сайте" },
   { kind: "channel_telegram", group: "Канал", label: "Telegram" },
+  { kind: "channel_email", group: "Канал", label: "Почта" },
   { kind: "ai_parse", group: "AI", label: "Разобрать входящее" },
   { kind: "ai_draft", group: "AI", label: "Черновик ответа" },
   { kind: "ai_ping", group: "AI", label: "Пинг клиента" },
@@ -56,6 +63,8 @@ const palette = [
 
 export default function FlowPage() {
   const [data, setData] = useState<{
+    flow?: { id: string; name: string; published?: boolean };
+    flows?: { id: string; name: string; published: boolean; compact: string; blockCount: number }[];
     blocks: Block[];
     channels: Channel[];
     processes: Process[];
@@ -76,12 +85,17 @@ export default function FlowPage() {
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState<"chain" | "models">("chain");
   const [salesPrompt, setSalesPrompt] = useState("");
+  const [flowId, setFlowId] = useState<string | null>(null);
+  const [sampleUser, setSampleUser] = useState("пинг");
+  const [modelRaw, setModelRaw] = useState("");
 
-  const load = useCallback(async () => {
-    const res = await fetch("/api/flow");
+  const load = useCallback(async (id?: string | null) => {
+    const q = id ? `/api/flow?flowId=${encodeURIComponent(id)}` : "/api/flow";
+    const res = await fetch(q);
     const json = await res.json();
     setData(json);
     if (typeof json.salesPrompt === "string") setSalesPrompt(json.salesPrompt);
+    if (json.flow?.id) setFlowId(json.flow.id);
   }, []);
 
   useEffect(() => {
@@ -98,9 +112,9 @@ export default function FlowPage() {
     await fetch("/api/flow/blocks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind }),
+      body: JSON.stringify({ kind, flowId }),
     });
-    await load();
+    await load(flowId);
   }
 
   async function saveDefault(value: string) {
@@ -109,7 +123,7 @@ export default function FlowPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ defaultModel: value || null }),
     });
-    await load();
+    await load(flowId);
   }
 
   async function saveGreeting(value: string) {
@@ -118,7 +132,7 @@ export default function FlowPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ greeting: value }),
     });
-    await load();
+    await load(flowId);
   }
 
   async function saveSalesPrompt() {
@@ -129,19 +143,73 @@ export default function FlowPage() {
     });
     const json = await res.json();
     setNotice(res.ok ? "Промт МАКС сохранён в воркспейсе" : json.error || "Ошибка");
-    await load();
+    await load(flowId);
   }
 
-  async function pingModel() {
+  async function pingModel(processId?: string) {
     const raw = data?.defaultModel || "mock:ok";
     const [provider, ...rest] = raw.split(":");
     const res = await fetch("/api/models", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider, model: rest.join(":") || "ok" }),
+      body: JSON.stringify({
+        provider,
+        model: rest.join(":") || "ok",
+        processId,
+        user: sampleUser,
+      }),
     });
     const json = await res.json();
-    setNotice(res.ok ? `Модель отвечает: ${json.preview}` : json.error || "Модель не ответила");
+    if (res.ok) {
+      setModelRaw(json.raw || json.preview || "");
+      setNotice(`Модель отвечает: ${json.provider}:${json.model} · ${json.ms} мс`);
+    } else {
+      setModelRaw("");
+      setNotice(json.error || "Модель не ответила");
+    }
+  }
+
+  async function createFlow() {
+    const res = await fetch("/api/flow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Новая цепочка" }),
+    });
+    const json = await res.json();
+    if (res.ok && json.flow?.id) await load(json.flow.id);
+    else setNotice(json.error || "Не удалось создать цепочку");
+  }
+
+  async function renameFlow(name: string) {
+    if (!flowId || !name.trim()) return;
+    await fetch("/api/flow", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: flowId, name: name.trim() }),
+    });
+    await load(flowId);
+  }
+
+  async function togglePublished(published: boolean) {
+    if (!flowId) return;
+    await fetch("/api/flow", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: flowId, published }),
+    });
+    await load(flowId);
+  }
+
+  async function deleteFlow() {
+    if (!flowId) return;
+    const res = await fetch(`/api/flow?id=${encodeURIComponent(flowId)}`, { method: "DELETE" });
+    const json = await res.json();
+    if (!res.ok) {
+      setNotice(json.error || "Нельзя убрать цепочку");
+      return;
+    }
+    setOpenId(null);
+    await load();
   }
 
   const preview = useMemo(() => {
@@ -200,6 +268,60 @@ export default function FlowPage() {
             <h1 className="mt-2 text-3xl font-semibold">Куда класть и как соединять</h1>
             <p className="mt-2 max-w-2xl text-muted">
               Слоты только по порядку, без веток. Превью: <span className="text-ink">{data.preview || preview}</span>
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {(data.flows || []).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={flowId === f.id ? "chip chip-on" : "chip"}
+                  onClick={() => {
+                    setOpenId(null);
+                    void load(f.id);
+                  }}
+                >
+                  {f.name}
+                  {!f.published ? " · черновик" : ""}
+                </button>
+              ))}
+              {owner && (
+                <button type="button" className="chip" onClick={createFlow}>
+                  Ещё цепочка
+                </button>
+              )}
+            </div>
+            {owner && data.flow && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                <label>
+                  Имя
+                  <input
+                    className="ml-2 rounded border border-line bg-slot px-2 py-1"
+                    defaultValue={data.flow.name}
+                    key={data.flow.id}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() && e.target.value.trim() !== data.flow?.name) {
+                        void renameFlow(e.target.value);
+                      }
+                    }}
+                  />
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(data.flow.published)}
+                    onChange={(e) => togglePublished(e.target.checked)}
+                  />
+                  Опубликована
+                </label>
+                {(data.flows || []).length > 1 && (
+                  <button type="button" className="text-urgent" onClick={deleteFlow}>
+                    Убрать цепочку
+                  </button>
+                )}
+              </div>
+            )}
+            <p className="mt-2 text-xs text-muted">
+              Несколько линейных цепочек в одном воркспейсе — например «Сайт-чат» и «Telegram». Веток нет.
             </p>
             {notice && <p className="mt-3 text-sm text-urgent">{notice}</p>}
             <div className="mt-10 flex flex-wrap items-center gap-3">
@@ -291,12 +413,29 @@ export default function FlowPage() {
               </label>
             )}
             {owner && (
-              <button type="button" onClick={pingModel} className="mt-3 rounded bg-accent px-4 py-2 text-sm text-ink">
-                Проверить запуск модели
-              </button>
-            )}
-            {notice && tab === "models" && /отвечает|ок/i.test(notice) && (
-              <p className="ok-banner mt-3 inline-block rounded px-3 py-2 text-sm">{notice}</p>
+              <div className="mt-6">
+                <label className="block text-sm">
+                  Пробный промпт (curl-папка модели)
+                  <textarea
+                    className="mt-1 w-full rounded border border-line bg-slot px-3 py-2 font-mono text-xs"
+                    rows={3}
+                    value={sampleUser}
+                    onChange={(e) => setSampleUser(e.target.value)}
+                  />
+                </label>
+                <button type="button" onClick={() => pingModel()} className="mt-3 rounded bg-accent px-4 py-2 text-sm text-ink">
+                  Проверить запуск модели
+                </button>
+                {notice && /отвечает|ок/i.test(notice) && (
+                  <p className="ok-banner mt-3 inline-block rounded px-3 py-2 text-sm">{notice}</p>
+                )}
+                {notice && !/отвечает|ок/i.test(notice) && <p className="mt-3 text-sm text-urgent">{notice}</p>}
+                {modelRaw && (
+                  <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded border border-line bg-slot p-3 text-xs">
+                    {modelRaw}
+                  </pre>
+                )}
+              </div>
             )}
             <table className="mt-6 w-full border-collapse text-sm">
               <thead>
@@ -304,6 +443,7 @@ export default function FlowPage() {
                   <th className="py-2 font-medium">Процесс</th>
                   <th className="py-2 font-medium">Модель</th>
                   <th className="py-2 font-medium">Режим</th>
+                  <th className="py-2 font-medium">Проверка</th>
                 </tr>
               </thead>
               <tbody>
@@ -314,11 +454,18 @@ export default function FlowPage() {
                       {p.binding ? `${p.binding.provider}:${p.binding.model}` : data.defaultModel || "—"}
                     </td>
                     <td className="py-2">{p.binding ? "явная" : "срочно человек"}</td>
+                    <td className="py-2">
+                      {owner && (
+                        <button type="button" className="link text-sm" onClick={() => pingModel(p.id)}>
+                          Проверить
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {data.processes.length === 0 && (
                   <tr>
-                    <td className="py-3 text-muted" colSpan={3}>
+                    <td className="py-3 text-muted" colSpan={4}>
                       Положите AI-слот на цепочке.
                     </td>
                   </tr>
@@ -341,7 +488,7 @@ export default function FlowPage() {
           owner={owner}
           onClose={() => setOpenId(null)}
           onSaved={async () => {
-            await load();
+            await load(flowId);
           }}
         />
       )}
@@ -384,6 +531,14 @@ function Sheet({
   const [tgChat, setTgChat] = useState("");
   const [tgText, setTgText] = useState("модули памяти, 20 кг, Шанхай → Москва, АВИА");
   const [pollMode, setPollMode] = useState(Boolean(channel?.pollMode) || !httpsWebhook);
+  const [fromAddress, setFromAddress] = useState(channel?.fromAddress ?? "");
+  const [smtpHost, setSmtpHost] = useState(channel?.smtpHost ?? "");
+  const [smtpPort, setSmtpPort] = useState(String(channel?.smtpPort || 465));
+  const [smtpUser, setSmtpUser] = useState(channel?.smtpUser ?? "");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [mailFrom, setMailFrom] = useState("client@example.com");
+  const [mailSubject, setMailSubject] = useState("Заявка");
+  const [mailText, setMailText] = useState("модули памяти, 20 кг, Шанхай → Москва, АВИА");
 
   async function save(extra: Record<string, unknown> = {}) {
     const [provider, ...rest] = modelVal.split(":");
@@ -401,6 +556,15 @@ function Sheet({
         prompt,
         provider: modelVal ? provider : "",
         model: modelVal ? model : "",
+        ...(channel?.type === "email"
+          ? {
+              fromAddress,
+              smtpHost,
+              smtpPort: Number(smtpPort) || 465,
+              smtpUser,
+              ...(smtpPass ? { smtpPass } : {}),
+            }
+          : {}),
         ...extra,
       }),
     });
@@ -418,7 +582,15 @@ function Sheet({
     await save();
     const res = await fetch(`/api/channels/${channel.id}/test`, { method: "POST" });
     const data = await res.json();
-    setMsg(res.ok ? (data.username ? `Ок, бот @${data.username}` : "Тестовая заявка ушла во входящие и в лиды") : data.error);
+    setMsg(
+      res.ok
+        ? data.username
+          ? `Ок, бот @${data.username}`
+          : channel.type === "email"
+            ? "Тестовое письмо во входящих"
+            : "Тестовая заявка ушла во входящие и в лиды"
+        : data.error,
+    );
     await onSaved();
   }
 
@@ -469,6 +641,18 @@ function Sheet({
     });
     const data = await res.json();
     setMsg(res.ok ? "Сообщение во входящих" : data.error);
+    await onSaved();
+  }
+
+  async function simulateEmail() {
+    if (!channel) return;
+    const res = await fetch(`/api/channels/${channel.id}/simulate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from: mailFrom, subject: mailSubject, text: mailText, name: "Клиент почты" }),
+    });
+    const data = await res.json();
+    setMsg(res.ok ? "Письмо во входящих" : data.error);
     await onSaved();
   }
 
@@ -594,6 +778,96 @@ function Sheet({
           </div>
         )}
 
+        {channel?.type === "email" && (
+          <div className="mt-6 space-y-3 text-sm">
+            {owner ? (
+              <>
+                <p className="break-all text-xs text-muted">Приём: {channel.ingestUrl || channel.webhookUrl}</p>
+                {channel.mailto && (
+                  <p className="break-all text-xs text-muted">
+                    mailto: <a className="link" href={channel.mailto}>{channel.fromAddress}</a>
+                  </p>
+                )}
+                <label className="block">
+                  Адрес ящика (From / mailto)
+                  <input
+                    className="mt-1 w-full rounded border border-line bg-paper px-3 py-2"
+                    value={fromAddress}
+                    onChange={(e) => setFromAddress(e.target.value)}
+                    placeholder="inbox@example.com"
+                  />
+                </label>
+                <label className="block">
+                  SMTP хост (пусто — ответ только во входящих)
+                  <input
+                    className="mt-1 w-full rounded border border-line bg-paper px-3 py-2"
+                    value={smtpHost}
+                    onChange={(e) => setSmtpHost(e.target.value)}
+                    placeholder="smtp.example.com"
+                  />
+                </label>
+                <label className="block">
+                  SMTP порт
+                  <input
+                    className="mt-1 w-full rounded border border-line bg-paper px-3 py-2"
+                    value={smtpPort}
+                    onChange={(e) => setSmtpPort(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  SMTP логин
+                  <input
+                    className="mt-1 w-full rounded border border-line bg-paper px-3 py-2"
+                    value={smtpUser}
+                    onChange={(e) => setSmtpUser(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  SMTP пароль
+                  <input
+                    type="password"
+                    className="mt-1 w-full rounded border border-line bg-paper px-3 py-2"
+                    value={smtpPass}
+                    onChange={(e) => setSmtpPass(e.target.value)}
+                    placeholder={channel.hasToken ? "•••• сохранён" : ""}
+                  />
+                </label>
+                <p className="text-muted">Сниппет form-to-mailbox (POST JSON from/subject/text)</p>
+                <textarea readOnly className="h-40 w-full rounded border border-line bg-paper p-3 font-mono text-xs" value={channel.snippet ?? ""} />
+                <button type="button" onClick={copySnippet} className="rounded border border-line px-3 py-1.5">
+                  Копировать сниппет
+                </button>
+                <div className="space-y-2 border-t border-line pt-3">
+                  <p className="text-muted">Симуляция входящего письма</p>
+                  <input
+                    className="w-full rounded border border-line bg-paper px-3 py-2"
+                    placeholder="from"
+                    value={mailFrom}
+                    onChange={(e) => setMailFrom(e.target.value)}
+                  />
+                  <input
+                    className="w-full rounded border border-line bg-paper px-3 py-2"
+                    placeholder="тема"
+                    value={mailSubject}
+                    onChange={(e) => setMailSubject(e.target.value)}
+                  />
+                  <textarea
+                    className="w-full rounded border border-line bg-paper px-3 py-2"
+                    rows={3}
+                    value={mailText}
+                    onChange={(e) => setMailText(e.target.value)}
+                  />
+                  <button type="button" onClick={simulateEmail} className="rounded border border-line px-3 py-1.5">
+                    Симулировать
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="text-muted">Секреты почты скрыты. Работайте во входящих.</p>
+            )}
+          </div>
+        )}
+
         {process && (
           <div className="mt-6 space-y-3 text-sm">
             <label className="block">
@@ -634,10 +908,10 @@ function Sheet({
         )}
 
         {block.lastError && <p className="mt-4 text-sm text-urgent">Ошибка слота: {block.lastError}</p>}
-        {msg && /ок|сохран|скопир|ушла|сообщение|webhook/i.test(msg) && (
+        {msg && /ок|сохран|скопир|ушла|сообщение|webhook|письм|входящ/i.test(msg) && (
           <p className="ok-banner mt-4 rounded px-3 py-2 text-sm">{msg}</p>
         )}
-        {msg && !/ок|сохран|скопир|ушла|сообщение|webhook/i.test(msg) && <p className="mt-4 text-sm text-urgent">{msg}</p>}
+        {msg && !/ок|сохран|скопир|ушла|сообщение|webhook|письм|входящ/i.test(msg) && <p className="mt-4 text-sm text-urgent">{msg}</p>}
 
         {owner && (
           <div className="mt-8 flex flex-wrap gap-2">

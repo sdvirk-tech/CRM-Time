@@ -10,11 +10,39 @@ export const VED_KNOWLEDGE = {
 };
 
 export async function ensureWorkspaceFlow(workspaceId: string) {
-  const existing = await prisma.flow.findFirst({ where: { workspaceId } });
+  const existing = await prisma.flow.findFirst({ where: { workspaceId }, orderBy: { createdAt: "asc" } });
   if (existing) return existing;
   return prisma.flow.create({
-    data: { workspaceId, name: "Основная цепочка" },
+    data: { workspaceId, name: "Основная цепочка", published: true },
   });
+}
+
+export async function listWorkspaceFlows(workspaceId: string) {
+  await ensureWorkspaceFlow(workspaceId);
+  return prisma.flow.findMany({
+    where: { workspaceId },
+    orderBy: { createdAt: "asc" },
+    include: { blocks: { orderBy: { position: "asc" } } },
+  });
+}
+
+export async function getWorkspaceFlow(workspaceId: string, flowId?: string | null) {
+  const flows = await listWorkspaceFlows(workspaceId);
+  if (flowId) {
+    const found = flows.find((f) => f.id === flowId);
+    if (found) return found;
+  }
+  return flows[0];
+}
+
+export async function flowForChannel(workspaceId: string, channelId: string) {
+  const blocks = await prisma.flowBlock.findMany({
+    where: { workspaceId, type: "channel" },
+    include: { flow: { include: { blocks: { orderBy: { position: "asc" } } } } },
+  });
+  const match = blocks.find((b) => asConfig(b.config).channelId === channelId);
+  if (match?.flow) return match.flow;
+  return getWorkspaceFlow(workspaceId);
 }
 
 export async function applyVedTemplate(workspaceId: string) {
@@ -60,7 +88,7 @@ export async function applyVedTemplate(workspaceId: string) {
     });
   }
   await prisma.channel.updateMany({
-    where: { workspaceId, type: { in: ["telegram", "web_chat"] }, topicId: null },
+    where: { workspaceId, type: { in: ["telegram", "web_chat", "email"] }, topicId: null },
     data: { topicId: topic.id },
   });
 }
@@ -88,7 +116,7 @@ export function inviteToken(): string {
 
 export type BlockConfig = {
   channelId?: string;
-  channelType?: "telegram" | "web_form" | "web_chat";
+  channelType?: "telegram" | "web_form" | "web_chat" | "email";
   aiProcessId?: string;
   processType?: "parse_inbound" | "draft_reply" | "deep_analysis" | "client_ping";
   actionType?: "create_lead" | "show_draft";
@@ -109,6 +137,7 @@ function compactName(block: PreviewBlock) {
     if (cfg.channelType === "web_form") return "форма";
     if (cfg.channelType === "web_chat") return "чат";
     if (cfg.channelType === "telegram") return "telegram";
+    if (cfg.channelType === "email") return "почта";
     return block.label.toLowerCase();
   }
   if (block.type === "ai_process") {

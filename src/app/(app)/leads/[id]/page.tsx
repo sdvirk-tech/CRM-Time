@@ -70,6 +70,10 @@ export default function LeadPage() {
             </Link>
           </>
         )}
+        {" · "}
+        <a className="link" href={`/api/leads/${lead.id}?format=csv`}>
+          CSV карточки
+        </a>
       </p>
       <CargoCard name={lead.contact.name} phone={lead.contact.phone} values={lead.fieldValues} />
       <textarea className="mt-6 w-full max-w-xl rounded-2xl border border-line bg-slot p-3" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} />

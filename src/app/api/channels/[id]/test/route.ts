@@ -55,6 +55,19 @@ export async function POST(req: Request, ctx: Ctx) {
       return NextResponse.json({ ok: true, ...result });
     }
 
+    if (channel.type === "email") {
+      const result = await ingestInbound({
+        workspaceId: session.workspaceId,
+        channelId: channel.id,
+        source: "email",
+        externalId: `test-${session.userId}@example.com`,
+        username: `test-${session.userId}@example.com`,
+        name: "Тест почты",
+        body: "Тема: проверка\nОт: test@example.com\nПроверка почтового канала",
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
     return jsonError(body.kind ? "Неизвестный тест" : "Нет теста для канала");
   });
 }
