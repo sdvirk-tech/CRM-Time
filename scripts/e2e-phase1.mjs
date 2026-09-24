@@ -35,7 +35,28 @@ function stamp() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+function extraPublicRegisterAllowed(mode, userCount) {
+  return mode !== "box" || userCount === 0;
+}
+
 async function main() {
+  assert(extraPublicRegisterAllowed("box", 0) === true, "box first owner");
+  assert(extraPublicRegisterAllowed("box", 1) === false, "box extra register closed");
+  assert(extraPublicRegisterAllowed("saas", 9) === true, "saas stays open");
+
+  const health = await req("/api/health");
+  assert(health.status === 200 && health.data.ok === true, "health");
+  assert(health.data.deployMode === "saas" || health.data.deployMode === "box", "deployMode flag");
+  assert(typeof health.data.publicRegistration === "boolean", "publicRegistration flag");
+  assert(health.data.boxSingleWorkspace === (health.data.deployMode === "box"), "boxSingleWorkspace");
+  if (health.data.deployMode === "box") {
+    const blocked = await req("/api/auth/register", {
+      method: "POST",
+      json: { name: "Лишний", email: `box-${stamp()}@example.com`, password: "secret12" },
+    });
+    assert(blocked.status === 403, "box blocks extra register");
+  }
+
   const id = stamp();
   const email = `owner-${id}@example.com`;
   const phoneA = "7999111" + String(Math.floor(1000 + Math.random() * 8999));
@@ -63,6 +84,18 @@ async function main() {
   assert(r.status === 200, "onboarding: " + JSON.stringify(r.data));
   if (r.cookie) cookie = r.cookie;
 
+  const empty = await req("/api/flow", { cookie });
+  assert(empty.status === 200, "flow after onboard");
+  assert((empty.data.blocks || []).length === 0, "empty canvas after onboard");
+  assert(empty.data.preview === "положите канал", "empty preview " + empty.data.preview);
+  assert(empty.data.compact === "положите канал", "empty compact");
+
+  const vedFields = await req("/api/fields", { cookie });
+  assert(vedFields.status === 200, "fields");
+  assert((vedFields.data.fields || []).some((f) => f.key === "tnved" && f.fieldType === "tnved"), "tnved field");
+  assert((vedFields.data.fields || []).some((f) => f.key === "incoterms"), "incoterms field");
+  assert((vedFields.data.fields || []).some((f) => f.key === "container"), "container field");
+
   async function add(kind) {
     const x = await req("/api/flow/blocks", { method: "POST", cookie, json: { kind } });
     assert(x.status === 200, "add " + kind + " " + JSON.stringify(x.data));
@@ -72,6 +105,12 @@ async function main() {
   const formBlock = await add("channel_web_form");
   const parseBlock = await add("ai_parse");
   await add("action_create_lead");
+  const assembled = await req("/api/flow", { cookie });
+  assert(
+    assembled.data.compact === "форма → разобрать (срочно человек) → создать лид",
+    "preview форма → разобрать → создать лид: " + assembled.data.compact,
+  );
+
   const tgBlock = await add("channel_telegram");
   const draftBlock = await add("ai_draft");
 
@@ -86,6 +125,10 @@ async function main() {
   assert(String(formCh.snippet).includes("#99CCFF"), "widget accent #99CCFF");
   assert(String(formCh.snippet).includes("#C5E2FF"), "widget mist #C5E2FF");
   assert(String(formCh.snippet).includes("color:#1a1a1a"), "widget dark text");
+  assert(
+    (flow.data.models || []).some((m) => m.provider === "mock" && m.model === "ok-b"),
+    "mock:ok-b listed",
+  );
 
   r = await req(`/api/flow/blocks/${parseBlock.id}`, {
     method: "PATCH",
@@ -96,14 +139,16 @@ async function main() {
   r = await req(`/api/flow/blocks/${draftBlock.id}`, {
     method: "PATCH",
     cookie,
-    json: { provider: "mock", model: "ok" },
+    json: { provider: "mock", model: "ok-b" },
   });
-  assert(r.status === 200, "explicit draft model (other process)");
+  assert(r.status === 200, "explicit draft model B");
 
   const previewFlow = await req("/api/flow", { cookie });
   const parseBound = previewFlow.data.processes.find((p) => p.type === "parse_inbound").binding;
   const draftBound = previewFlow.data.processes.find((p) => p.type === "draft_reply").binding;
-  assert(parseBound.model === "ok" && draftBound.model === "ok", "two explicit models");
+  assert(parseBound.model === "ok" && draftBound.model === "ok-b", "two different explicit models");
+  assert(String(previewFlow.data.compact).includes("разобрать (mock:ok)"), "compact parse model");
+  assert(String(previewFlow.data.compact).includes("черновик (mock:ok-b)"), "compact draft model");
 
   r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
     method: "POST",
@@ -119,6 +164,25 @@ async function main() {
   assert(r.data.urgent === false, "explicit model is not auto-urgent");
   const leadA = r.data.leadId;
   const contactA = r.data.contactId;
+
+  const contactCard = await req(`/api/contacts/${contactA}`, { cookie });
+  assert(contactCard.status === 200 && contactCard.data.id === contactA, "contact card");
+  assert((contactCard.data.channels || []).length >= 1, "contact channels");
+  assert((contactCard.data.leads || []).some((l) => l.id === leadA), "contact leads");
+  assert(
+    (contactCard.data.fieldValues || []).some((v) => v.field?.key === "tnved" && String(v.value).includes("0101210000")),
+    "tnved stored on contact",
+  );
+  r = await req(`/api/contacts/${contactA}`, { method: "PATCH", cookie, json: { phone: "abc" } });
+  assert(r.status === 400, "contact invalid phone");
+
+  const formHtml = await req(`/f/${formCh.publicKey}`);
+  assert(formHtml.status === 200, "public form page");
+  const formRaw = formHtml.data?.raw || JSON.stringify(formHtml.data);
+  assert(/Оставить заявку/.test(formRaw), "public form title");
+
+  r = await req(`/api/channels/${formCh.id}/test`, { method: "POST", cookie, json: {} });
+  assert(r.status === 200 && r.data.ok === true && r.data.leadId, "canvas form test " + JSON.stringify(r.data));
 
   r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
     method: "POST",
@@ -142,6 +206,17 @@ async function main() {
   assert(r.status === 400, "invalid tnved rejected");
   const leads2 = await req("/api/leads", { cookie });
   assert(leads2.data.items.length === beforeInvalid, "invalid tnved does not create lead");
+
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Брак тел", phone: "12", comment: "bad", tnved: "0101210000" },
+  });
+  assert(r.status === 400, "invalid phone rejected");
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Брак Incoterms", phone: "79990001122", comment: "bad", tnved: "0101210000", incoterms: "XXX" },
+  });
+  assert(r.status === 400, "invalid incoterms rejected");
 
   r = await req(`/api/flow/blocks/${parseBlock.id}`, {
     method: "PATCH",
@@ -195,6 +270,14 @@ async function main() {
     json: { chatId: "tg-" + id, text: "нужен контейнер / FCA", username: "clientb", name: "Клиент Б" },
   });
   assert(r.status === 200, "telegram simulate " + JSON.stringify(r.data));
+  const tgContactId = r.data.contactId;
+  assert(tgContactId, "telegram contact");
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: "tg-" + id, text: "ещё раз тот же чат", username: "clientb", name: "Клиент Б" },
+  });
+  assert(r.status === 200 && r.data.contactId === tgContactId, "same telegram chatId merges contact");
   const inbox = await req("/api/inbox", { cookie });
   const tgItem = inbox.data.items.find((i) => i.channel.type === "telegram");
   assert(tgItem, "telegram in inbox");
@@ -204,6 +287,19 @@ async function main() {
   assert(!convTg.data.messages.some((m) => m.direction === "outbound"), "draft not auto-sent");
   assert(!String(draft.body).includes("<think>"), "think tags stripped from draft");
   assert(String(draft.body).includes("По методике"), "knowledge stuffed into draft prompt");
+  assert(String(draft.body).includes("модель B"), "draft uses other explicit model");
+
+  r = await req(`/api/conversations/${tgItem.id}`, {
+    method: "POST",
+    cookie,
+    json: { text: "Ответ из CRM в Telegram", send: true },
+  });
+  assert(r.status === 200 && r.data.sent === true, "CRM send outbound");
+  const convSent = await req(`/api/conversations/${tgItem.id}`, { cookie });
+  assert(
+    (convSent.data.messages || []).some((m) => m.direction === "outbound" && String(m.body).includes("Ответ из CRM")),
+    "outbound persisted for Telegram",
+  );
 
   r = await req("/api/knowledge", { cookie });
   assert(r.status === 200 && (r.data.articles || []).length >= 1, "ved knowledge seeded");
@@ -294,6 +390,14 @@ async function main() {
   assert(r.status === 200, "manager inbox");
   r = await req("/api/leads", { cookie: mgrCookie });
   assert(r.status === 200 && r.data.items.length > 0, "manager sees leads");
+  const mgrFlow = await req("/api/flow", { cookie: mgrCookie });
+  assert(mgrFlow.status === 200, "manager can read flow");
+  const mgrChans = mgrFlow.data.channels || [];
+  assert(mgrChans.length > 0, "manager sees channel names");
+  for (const ch of mgrChans) {
+    assert(!ch.publicKey && !ch.snippet && !ch.webhookUrl && !ch.formUrl && !ch.chatUrl, "manager no channel secrets " + ch.type);
+    assert(!ch.tokenPreview, "manager no token preview");
+  }
 
   const phoneChat = "tg-phone-" + id;
   r = await req(`/api/channels/${tgCh.id}/simulate`, {
@@ -372,22 +476,84 @@ async function main() {
   assert(String(chatCh.snippet).includes("#F2F2F2"), "chat snippet paper");
   assert(String(chatCh.snippet).includes("#99CCFF"), "chat snippet accent");
   assert(String(chatCh.chatUrl).includes("/c/"), "chat url");
+  const chatHtml = await req(`/c/${chatCh.publicKey}`);
+  assert(chatHtml.status === 200, "public chat page");
+  const chatRaw = chatHtml.data?.raw || JSON.stringify(chatHtml.data);
+  assert(/Чат/.test(chatRaw), "public chat title");
+
+  r = await req(`/api/flow/blocks/${draftBlock.id}`, {
+    method: "PATCH",
+    cookie,
+    json: { provider: "", model: "" },
+  });
+  assert(r.status === 200, "clear draft model");
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: "chat-default-" + id, name: "Гость дефолт", text: "нужен контейнер без явной модели" },
+  });
+  assert(r.status === 200 && r.data.conversationId, "web chat default ingest");
+  assert(r.data.urgent === true, "chat default model is urgent");
+  const chatDefPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-default-${id}`);
+  assert(chatDefPoll.status === 200, "web chat default poll");
+  assert(
+    !(chatDefPoll.data.messages || []).some((m) => m.direction === "outbound"),
+    "default model does not auto-reply in chat",
+  );
+  r = await req(`/api/flow/blocks/${draftBlock.id}`, {
+    method: "PATCH",
+    cookie,
+    json: { provider: "mock", model: "ok-b" },
+  });
+  assert(r.status === 200, "restore explicit draft B");
+
   r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
     method: "POST",
     json: { sessionId: "chat-" + id, name: "Гость", text: "нужен контейнер FCA" },
   });
   assert(r.status === 200 && r.data.conversationId, "web chat ingest " + JSON.stringify(r.data));
+  const chatConvId = r.data.conversationId;
   const chatPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-${id}`);
   assert(chatPoll.status === 200, "web chat poll");
   assert(
     (chatPoll.data.messages || []).some((m) => m.direction === "outbound"),
     "explicit model publishes chat reply",
   );
+  if (r.data.leadId) {
+    const chatLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
+    assert(chatLead.data.source === "web_chat", "web_chat lead source");
+  }
+
+  const deepAdd = await add("ai_deep");
+  assert(deepAdd.type === "ai_process", "deep slot added");
+  const afterDeep = await req("/api/flow", { cookie });
+  assert(
+    (afterDeep.data.processes || []).some((p) => p.type === "deep_analysis"),
+    "deep_analysis visible",
+  );
+  assert(typeof afterDeep.data.deepAnalysisEnabled === "boolean", "deep flag");
+  r = await req(`/api/flow/blocks/${parseBlock.id}`, {
+    method: "PATCH",
+    cookie,
+    json: { provider: "mock", model: "ok" },
+  });
+  assert(r.status === 200, "restore parse after fail");
+  const phoneDeep = "7999555" + String(Math.floor(1000 + Math.random() * 8999));
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: {
+      name: "После deep",
+      phone: phoneDeep,
+      comment: "цепочка жива",
+      tnved: "0402100000",
+    },
+  });
+  assert(r.status === 200 && r.data.leadId, "chain works with deep slot present");
+  assert(r.data.urgent === false, "deep slot without key does not auto-urgent");
 
   const team = await req("/api/team", { cookie });
   const mgr = (team.data.members || []).find((m) => m.role === "manager");
   assert(mgr?.userId, "manager userId");
-  r = await req(`/api/conversations/${r.data.conversationId}`, {
+  r = await req(`/api/conversations/${chatConvId}`, {
     method: "PATCH",
     cookie,
     json: { action: "redirect", userId: mgr.userId },

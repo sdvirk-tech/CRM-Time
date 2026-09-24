@@ -7,11 +7,11 @@ type Channel = {
   id: string;
   type: string;
   name: string;
-  publicKey: string;
-  snippet: string;
-  formUrl: string;
+  publicKey?: string;
+  snippet?: string;
+  formUrl?: string;
   chatUrl?: string;
-  webhookUrl: string;
+  webhookUrl?: string;
   hasToken: boolean;
   enabled: boolean;
   topicId?: string | null;
@@ -63,6 +63,8 @@ export default function FlowPage() {
     greeting: string;
     topics: Topic[];
     publicUrl?: string;
+    preview?: string;
+    compact?: string;
   } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -177,7 +179,7 @@ export default function FlowPage() {
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-ink">Цепочка</p>
             <h1 className="mt-2 text-3xl font-semibold">Куда класть и как соединять</h1>
             <p className="mt-2 max-w-2xl text-muted">
-              Слоты только по порядку, без веток. Превью: <span className="text-ink">{preview}</span>
+              Слоты только по порядку, без веток. Превью: <span className="text-ink">{data.preview || preview}</span>
             </p>
             {notice && <p className="mt-3 text-sm text-urgent">{notice}</p>}
             <div className="mt-10 flex flex-wrap items-center gap-3">
@@ -399,7 +401,7 @@ function Sheet({
   }
 
   async function copySnippet() {
-    if (!channel) return;
+    if (!channel?.snippet) return;
     await navigator.clipboard.writeText(channel.snippet);
     setMsg("Сниппет скопирован");
   }
@@ -446,6 +448,7 @@ function Sheet({
         )}
 
         {(channel?.type === "web_form" || channel?.type === "web_chat") && (
+          owner && channel.publicKey ? (
           <div className="mt-6 space-y-3 text-sm">
             <p>
               {channel.type === "web_chat" ? "Ключ чата" : "Ключ формы"}: <code>{channel.publicKey}</code>
@@ -461,11 +464,14 @@ function Sheet({
               <input className="mt-1 w-full rounded border border-line bg-paper px-3 py-2" value={origins} onChange={(e) => setOrigins(e.target.value)} disabled={!owner} />
             </label>
             <p className="text-muted">Сниппет на сайт</p>
-            <textarea readOnly className="h-40 w-full rounded border border-line bg-paper p-3 font-mono text-xs" value={channel.snippet} />
+            <textarea readOnly className="h-40 w-full rounded border border-line bg-paper p-3 font-mono text-xs" value={channel.snippet ?? ""} />
             <button type="button" onClick={copySnippet} className="rounded border border-line px-3 py-1.5">
               Копировать сниппет
             </button>
           </div>
+          ) : (
+            <p className="mt-6 text-sm text-muted">Ключ виджета скрыт. Работайте во входящих и лидах.</p>
+          )
         )}
 
         {channel?.type === "telegram" && (
@@ -476,10 +482,14 @@ function Sheet({
                 <input className="mt-1 w-full rounded border border-line bg-paper px-3 py-2" value={token} onChange={(e) => setToken(e.target.value)} placeholder={channel.hasToken ? "•••• сохранён" : "123:ABC"} />
               </label>
             ) : (
-              <p className="text-muted">Токен бота скрыт. Работайте во входящих.</p>
+              <p className="text-muted">Токен бота и webhook скрыты. Работайте во входящих.</p>
             )}
+            {owner && (
+              <>
             <p className="break-all text-xs text-muted">Публичный URL: {publicUrl || "APP_URL / PUBLIC_URL"}</p>
             <p className="break-all text-xs text-muted">Webhook: {channel.webhookUrl}</p>
+              </>
+            )}
             {owner && (
               <button type="button" onClick={reregisterWebhook} className="rounded border border-accent bg-paper px-3 py-1.5">
                 Перерегистрировать webhook

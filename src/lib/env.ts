@@ -6,6 +6,11 @@ export function deployMode(): "saas" | "box" {
   return env("DEPLOY_MODE", "saas") === "box" ? "box" : "saas";
 }
 
+/** Публичная регистрация открыта только в saas. Первый владелец коробки проходит всегда. */
+export function extraPublicRegisterAllowed(userCount: number): boolean {
+  return deployMode() !== "box" || userCount === 0;
+}
+
 export function appUrl(): string {
   return (env("PUBLIC_URL") || env("APP_URL") || "http://localhost:3000").replace(/\/$/, "");
 }

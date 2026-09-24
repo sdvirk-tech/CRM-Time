@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { deployMode } from "@/lib/env";
+import { deployMode, extraPublicRegisterAllowed } from "@/lib/env";
 
 export async function GET() {
   await prisma.$queryRaw`SELECT 1`;
-  return NextResponse.json({ ok: true, deployMode: deployMode() });
+  const users = await prisma.user.count();
+  const mode = deployMode();
+  return NextResponse.json({
+    ok: true,
+    deployMode: mode,
+    publicRegistration: extraPublicRegisterAllowed(users),
+    boxSingleWorkspace: mode === "box",
+  });
 }

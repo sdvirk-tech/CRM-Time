@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
+import { normalizePhone } from "@/lib/validators";
 import { z } from "zod";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -34,9 +35,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");
+    const data = { ...parsed.data };
+    if (data.phone) {
+      const phone = normalizePhone(data.phone);
+      if (!phone) return jsonError("Некорректный телефон", 400);
+      data.phone = phone;
+    }
     const contact = await prisma.contact.update({
       where: { id },
-      data: parsed.data,
+      data,
     });
     return NextResponse.json(contact);
   });

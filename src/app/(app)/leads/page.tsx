@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DayOverview, DayStats } from "@/components/DayOverview";
+import { sourceLabel } from "@/lib/labels";
 
 type Lead = {
   id: string;
@@ -64,7 +65,7 @@ export default function LeadsPage() {
                       {l.urgent && <span className="urgent-badge">срочно</span>}
                     </div>
                     <p className="mt-1 text-xs text-muted">
-                      {l.source === "web_form" ? "сайт" : "Telegram"}
+                      {sourceLabel(l.source)}
                       {l.assignee ? ` · ${l.assignee.name}` : " · никто"}
                     </p>
                     {col.key === "new" && (

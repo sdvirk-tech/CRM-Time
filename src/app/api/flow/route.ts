@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
-import { jsonError } from "@/lib/auth";
-import { asConfig, ensureWorkspaceFlow } from "@/lib/workspace";
+import { asConfig, buildFlowPreview, ensureWorkspaceFlow } from "@/lib/workspace";
 import { deepAnalysisEnabled, listModels } from "@/lib/ai";
 import { decryptSecret } from "@/lib/crypto";
 import { publicUrl } from "@/lib/env";
@@ -20,6 +19,11 @@ export async function GET() {
       include: { binding: true },
     });
     const isOwner = session.role === "owner";
+    const blockPayload = blocks.map((b) => ({
+      ...b,
+      config: asConfig(b.config),
+    }));
+    const { preview, compact } = buildFlowPreview(blockPayload, processes);
     const channelPayload = channels.map((c) => {
       const cfg = (c.config ?? {}) as { allowedOrigins?: string[] };
       let hasToken = false;
@@ -30,13 +34,20 @@ export async function GET() {
           hasToken = true;
         }
       }
-      return {
+      const base = {
         id: c.id,
         type: c.type,
         name: c.name,
-        publicKey: c.publicKey,
         hasToken,
         enabled: c.enabled,
+        topicId: c.topicId,
+      };
+      if (!isOwner) {
+        return { ...base, allowedOrigins: [] as string[] };
+      }
+      return {
+        ...base,
+        publicKey: c.publicKey,
         allowedOrigins: cfg.allowedOrigins ?? [],
         snippet:
           c.type === "web_chat"
@@ -47,25 +58,24 @@ export async function GET() {
         formUrl: `${publicUrl()}/f/${c.publicKey}`,
         chatUrl: `${publicUrl()}/c/${c.publicKey}`,
         webhookUrl: `${publicUrl()}/api/ingest/telegram/${c.publicKey}`,
-        topicId: c.topicId,
-        tokenPreview: isOwner && c.secretsEnc ? "••••••••" : null,
+        tokenPreview: c.secretsEnc ? "••••••••" : null,
       };
     });
+    const workspace = await prisma.workspace.findUnique({ where: { id: session.workspaceId } });
     return NextResponse.json({
       flow: { id: flow.id, name: flow.name },
-      blocks: blocks.map((b) => ({
-        ...b,
-        config: asConfig(b.config),
-      })),
+      blocks: blockPayload,
       channels: channelPayload,
       processes,
       models: listModels(),
       deepAnalysisEnabled: deepAnalysisEnabled(),
       role: session.role,
-      defaultModel: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.defaultModel ?? null,
-      greeting: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.greeting ?? "",
-      publicUrl: publicUrl(),
-      slaMinutes: (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.slaMinutes ?? 15,
+      defaultModel: workspace?.defaultModel ?? null,
+      greeting: workspace?.greeting ?? "",
+      publicUrl: isOwner ? publicUrl() : null,
+      slaMinutes: workspace?.slaMinutes ?? 15,
+      preview,
+      compact,
       topics: await prisma.knowledgeTopic.findMany({
         where: { workspaceId: session.workspaceId },
         orderBy: { createdAt: "asc" },

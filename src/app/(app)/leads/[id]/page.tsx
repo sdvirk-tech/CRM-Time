@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { sourceLabel } from "@/lib/labels";
 
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
@@ -52,7 +53,7 @@ export default function LeadPage() {
         {lead.urgent && <span className="urgent-badge">срочно</span>}
       </div>
       <p className="mt-2 text-muted">
-        Источник: {lead.source === "web_form" ? "форма сайта" : "Telegram"} · статус {lead.status} ·{" "}
+        Источник: {sourceLabel(lead.source, "long")} · статус {lead.status} ·{" "}
         {lead.assignee ? lead.assignee.name : "без ответственного"}
       </p>
       <p className="mt-4">

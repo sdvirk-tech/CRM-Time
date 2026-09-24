@@ -248,7 +248,9 @@ export async function ingestInbound(input: IngestInput) {
   const hasCreateLeadAction = Boolean(
     flow?.blocks.some((b) => b.type === "action" && asConfig(b.config).actionType === "create_lead"),
   );
-  const needsWatch = processes.some((p) => !p.explicit);
+  const needsWatch = processes
+    .filter((p) => p.type === "parse_inbound" || p.type === "draft_reply")
+    .some((p) => !p.explicit);
   const handoff = wantsManager(input.body);
   const channelRow = await prisma.channel.findUnique({ where: { id: input.channelId } });
   const articles = pickKnowledge(

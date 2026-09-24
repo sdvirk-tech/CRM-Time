@@ -51,7 +51,8 @@ const PROVIDERS: ProviderDef[] = [
 
 export function listModels(): ModelOption[] {
   const out: ModelOption[] = [
-    { provider: "mock", model: "ok", label: "Тест (мок)", available: true },
+    { provider: "mock", model: "ok", label: "Тест (мок A)", available: true },
+    { provider: "mock", model: "ok-b", label: "Тест (мок B, черновик)", available: true },
     { provider: "mock", model: "fail", label: "Тест (сбой модели)", available: true },
   ];
   for (const p of PROVIDERS) {
@@ -134,6 +135,7 @@ export async function runModel(opts: {
 }): Promise<string> {
   if (opts.provider === "mock") {
     if (opts.model === "fail") throw new Error("Искусственный сбой модели (mock:fail)");
+    const isB = opts.model === "ok-b";
     if (opts.system.includes("JSON")) {
       return sanitizeModelText(
         JSON.stringify({
@@ -145,8 +147,9 @@ export async function runModel(opts: {
       );
     }
     const byBook = opts.system.includes("--- знания ---") ? "По методике. " : "";
+    const tag = isB ? "модель B. " : "";
     return sanitizeModelText(
-      `<think>не клиенту</think>${byBook}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
+      `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,
     );
   }
 

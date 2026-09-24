@@ -71,3 +71,49 @@ export function asConfig(raw: unknown): BlockConfig {
   if (!raw || typeof raw !== "object") return {};
   return raw as BlockConfig;
 }
+
+type PreviewBlock = { type: string; label: string; config: unknown };
+type PreviewProcess = { id: string; binding: { provider: string; model: string } | null };
+
+function compactName(block: PreviewBlock) {
+  const cfg = asConfig(block.config);
+  if (block.type === "channel") {
+    if (cfg.channelType === "web_form") return "форма";
+    if (cfg.channelType === "web_chat") return "чат";
+    if (cfg.channelType === "telegram") return "telegram";
+    return block.label.toLowerCase();
+  }
+  if (block.type === "ai_process") {
+    if (cfg.processType === "parse_inbound") return "разобрать";
+    if (cfg.processType === "draft_reply") return "черновик";
+    return "глубокий анализ";
+  }
+  if (cfg.actionType === "create_lead") return "создать лид";
+  return "показать черновик";
+}
+
+function slotCaption(block: PreviewBlock, processes: PreviewProcess[]) {
+  const cfg = asConfig(block.config);
+  if (block.type !== "ai_process") return compactName(block);
+  const proc = processes.find((p) => p.id === cfg.aiProcessId);
+  const name = compactName(block);
+  if (!proc?.binding) return `${name} (срочно человек)`;
+  return `${name} (${proc.binding.provider}:${proc.binding.model})`;
+}
+
+export function buildFlowPreview(blocks: PreviewBlock[], processes: PreviewProcess[]) {
+  if (!blocks.length) return { preview: "положите канал", compact: "положите канал" };
+  const preview = blocks
+    .map((b) => {
+      const cfg = asConfig(b.config);
+      if (b.type === "ai_process") {
+        const proc = processes.find((p) => p.id === cfg.aiProcessId);
+        if (!proc?.binding) return `${b.label} (срочно человек)`;
+        return `${b.label} (${proc.binding.provider}:${proc.binding.model})`;
+      }
+      return b.label;
+    })
+    .join(" → ");
+  const compact = blocks.map((b) => slotCaption(b, processes)).join(" → ");
+  return { preview, compact };
+}

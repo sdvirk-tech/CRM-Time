@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
+import { channelLabel } from "@/lib/labels";
 
 type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
 type Operator = { userId: string; name: string; role: string };
@@ -18,12 +19,6 @@ type Data = {
   channel: { type: string; name: string };
   messages: Msg[];
 };
-
-function channelLabel(type: string) {
-  if (type === "web_form") return "форма";
-  if (type === "web_chat") return "чат";
-  return "Telegram";
-}
 
 export default function ConversationPage() {
   const params = useParams<{ id: string }>();

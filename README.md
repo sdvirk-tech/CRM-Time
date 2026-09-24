@@ -16,6 +16,8 @@ docker compose up --build
 
 Откройте http://localhost:3000 — регистрация владельца, онбординг, холст.
 
+`docker compose config` проверяет файл. `docker compose build` на overlayfs может упасть с `invalid argument` — тогда локально: Postgres + `npm run dev`.
+
 | Переменная | Смысл |
 |---|---|
 | `DEPLOY_MODE=saas` | много воркспейсов, публичная регистрация |

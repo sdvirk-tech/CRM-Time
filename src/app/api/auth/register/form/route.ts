@@ -1,13 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import {
-  applySessionCookie,
-  hashPassword,
-  jsonError,
-  publicRegistrationOpen,
-  userCount,
-} from "@/lib/auth";
-import { deployMode } from "@/lib/env";
+import { applySessionCookie, hashPassword, jsonError, userCount } from "@/lib/auth";
+import { extraPublicRegisterAllowed } from "@/lib/env";
 
 export async function POST(req: Request) {
   const form = await req.formData();
@@ -18,7 +12,7 @@ export async function POST(req: Request) {
     return jsonError("Проверьте имя, почту и пароль (от 6 символов)");
   }
   const count = await userCount();
-  if ((!publicRegistrationOpen() && count > 0) || (deployMode() === "box" && count > 0)) {
+  if (!extraPublicRegisterAllowed(count)) {
     return jsonError("В режиме коробки публичная регистрация выключена", 403);
   }
   const exists = await prisma.user.findUnique({ where: { email } });

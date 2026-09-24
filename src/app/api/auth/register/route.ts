@@ -1,12 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import {
-  hashPassword,
-  jsonError,
-  jsonWithSession,
-  publicRegistrationOpen,
-  userCount,
-} from "@/lib/auth";
-import { deployMode } from "@/lib/env";
+import { hashPassword, jsonError, jsonWithSession, userCount } from "@/lib/auth";
+import { extraPublicRegisterAllowed } from "@/lib/env";
 import { z } from "zod";
 
 const schema = z.object({
@@ -21,16 +15,12 @@ export async function POST(req: Request) {
   if (!parsed.success) return jsonError("Проверьте имя, почту и пароль (от 6 символов)");
 
   const count = await userCount();
-  if (!publicRegistrationOpen() && count > 0) {
+  if (!extraPublicRegisterAllowed(count)) {
     return jsonError("В режиме коробки публичная регистрация выключена", 403);
   }
 
   const exists = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
   if (exists) return jsonError("Такая почта уже есть");
-
-  if (deployMode() === "box" && count > 0) {
-    return jsonError("В коробке один воркспейс — войдите или примите приглашение", 403);
-  }
 
   const user = await prisma.user.create({
     data: {
