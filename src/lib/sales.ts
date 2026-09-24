@@ -238,7 +238,7 @@ export function extractCargoFromText(text: string): CargoExtract {
   const tg = text.match(/(?:телеграм|telegram|tg)[:\s]*@?([A-Za-z0-9_]{4,32})/i) || text.match(/@([A-Za-z0-9_]{4,32})/);
   if (tg) out.telegram = `@${tg[1]}`;
   const max = text.match(/\b(?:max|макс)[:\s]+([A-Za-z0-9_@.+-]+|нет)/i);
-  if (max) out.max = max[1];
+  if (max) out.max = max[1].replace(/[.,;:]+$/g, "");
   const w = text.match(/(\d+(?:[.,]\d+)?)\s*(кг|kg)/i);
   if (w) out.weight = `${w[1].replace(",", ".")} кг`;
   const vol = text.match(/(\d+(?:[.,]\d+)?)\s*(м³|м3|m3)/i);
