@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { jsonError } from "@/lib/auth";
 import { ingestInbound } from "@/lib/pipeline";
 import { corsJson, corsOptions } from "@/lib/cors";
+import { photoNoteFromUrl, saveChatPhoto } from "@/lib/uploads";
 
 type Ctx = { params: Promise<{ key: string }> };
 
@@ -45,26 +46,66 @@ export async function GET(req: Request, ctx: Ctx) {
   });
 }
 
+async function readPayload(req: Request): Promise<{
+  sessionId: string;
+  text: string;
+  name?: string;
+  photoNote: string;
+}> {
+  const ctype = req.headers.get("content-type") || "";
+  if (ctype.includes("multipart/form-data")) {
+    const form = await req.formData();
+    const sessionId = String(form.get("sessionId") || "").trim();
+    const text = String(form.get("text") || "").trim();
+    const name = String(form.get("name") || "").trim() || undefined;
+    let photoNote = "";
+    const photoUrl = String(form.get("photoUrl") || form.get("photoFileId") || "").trim();
+    if (photoUrl) photoNote = photoNoteFromUrl(photoUrl.startsWith("file_id:") || photoUrl.startsWith("http") || photoUrl.startsWith("/") ? photoUrl : `file_id:${photoUrl}`);
+    const file = form.get("photo");
+    if (file && typeof file !== "string" && file.size > 0) {
+      const buf = Buffer.from(await file.arrayBuffer());
+      const url = await saveChatPhoto(buf, file.type || "image/jpeg");
+      photoNote = photoNoteFromUrl(url);
+    }
+    return { sessionId, text, name, photoNote };
+  }
+  const body = (await req.json().catch(() => null)) as {
+    sessionId?: string;
+    text?: string;
+    name?: string;
+    photoUrl?: string;
+    photoFileId?: string;
+  } | null;
+  const sessionId = String(body?.sessionId || "").trim();
+  const text = String(body?.text || "").trim();
+  const name = body?.name?.trim() || undefined;
+  let photoNote = "";
+  if (body?.photoUrl) photoNote = photoNoteFromUrl(body.photoUrl);
+  else if (body?.photoFileId) photoNote = photoNoteFromUrl(`file_id:${body.photoFileId}`);
+  return { sessionId, text, name, photoNote };
+}
+
 export async function POST(req: Request, ctx: Ctx) {
   const { key } = await ctx.params;
   const channel = await prisma.channel.findUnique({ where: { publicKey: key } });
   if (!channel || channel.type !== "web_chat") return jsonError("Чат не найден", 404);
   if (channel.enabled === false) return jsonError("Канал выключен", 403);
-  const body = (await req.json().catch(() => null)) as {
-    sessionId?: string;
-    text?: string;
-    name?: string;
-  } | null;
-  const sessionId = String(body?.sessionId || "").trim();
-  const text = String(body?.text || "").trim();
-  if (!sessionId || !text) return jsonError("Нужны sessionId и text");
+  let payload: Awaited<ReturnType<typeof readPayload>>;
+  try {
+    payload = await readPayload(req);
+  } catch (e) {
+    return jsonError(e instanceof Error ? e.message : "Не удалось принять фото", 400);
+  }
+  const { sessionId, text, name, photoNote } = payload;
+  if (!sessionId || (!text && !photoNote)) return jsonError("Нужны sessionId и текст или фото");
   const result = await ingestInbound({
     workspaceId: channel.workspaceId,
     channelId: channel.id,
     source: "web_chat",
     externalId: sessionId,
-    name: body?.name?.trim() || "Гость сайта",
-    body: text,
+    name: name || "Гость сайта",
+    body: text || photoNote,
+    photoNote,
   });
   return corsJson({ ok: true, ...result });
 }

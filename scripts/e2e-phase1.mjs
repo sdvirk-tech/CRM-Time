@@ -269,6 +269,7 @@ async function main() {
     json: { chatId: "tg-" + id, text: "нужен контейнер / FCA", username: "clientb", name: "Клиент Б" },
   });
   assert(r.status === 200, "telegram simulate " + JSON.stringify(r.data));
+  assert(!r.data.leadId, "incomplete telegram does not create lead");
   const tgContactId = r.data.contactId;
   assert(tgContactId, "telegram contact");
   r = await req(`/api/channels/${tgCh.id}/simulate`, {
@@ -570,6 +571,82 @@ async function main() {
   assert(r.status === 200 && r.data.leadId, "chain works with deep slot present");
   assert(r.data.urgent === false, "deep slot without key does not auto-urgent");
 
+  const missSid = "chat-miss-" + id;
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: {
+      sessionId: missSid,
+      name: "Анна",
+      text: "Груз: модули памяти ЭВМ, ссылка https://example.com/mod",
+    },
+  });
+  assert(r.status === 200, "partial chat ingest " + JSON.stringify(r.data));
+  assert(!r.data.leadId, "incomplete card does not create lead");
+  assert(r.data.cardComplete === false, "cardComplete false");
+  assert((r.data.missing || []).length > 0, "missing slots listed");
+  const missPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=${missSid}`);
+  const missOut = [...(missPoll.data.messages || [])].reverse().find((m) => m.direction === "outbound");
+  assert(missOut, "bot asks remaining field");
+  assert(
+    /телефон|вес|объём|объем|Max|макс|телеграм|отправк|прибыт|маршрут|срок|фото|инвойс|штук|имя/i.test(missOut.body),
+    "follow-up asks a card field: " + missOut.body,
+  );
+  assert(!/"ready"\s*:/.test(String(missOut.body)), "follow-up is not JSON");
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: {
+      sessionId: missSid,
+      name: "Анна",
+      text: "Вес 12 кг, объём 0.5 м3",
+      photoUrl: "https://cdn.example.com/mod.jpg",
+    },
+  });
+  assert(r.status === 200 && !r.data.leadId, "still no lead until card is full");
+  const missPhone = "7999888" + String(Math.floor(1000 + Math.random() * 8999));
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: {
+      sessionId: missSid,
+      name: "Анна",
+      text:
+        "Имя Анна. Телефон " +
+        missPhone +
+        " телеграм @annaved max:maxanna. Отправка Шанхай, прибытие Москва. Приоритет АВИА. Срок октябрь 2026. Инвойсная стоимость 10000 USD, 20 шт. фото есть",
+    },
+  });
+  assert(r.status === 200 && r.data.leadId, "follow-up complete creates lead " + JSON.stringify(r.data));
+  assert(r.data.cardComplete === true, "follow-up cardComplete");
+  const missLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
+  assert(missLead.data.status === "new", "follow-up lead status new");
+  const missMap = Object.fromEntries((missLead.data.fieldValues || []).map((v) => [v.field.key, v.value]));
+  for (const k of ["telegram", "max", "cargo", "weight", "volume", "origin", "destination", "route", "eta"]) {
+    assert(missMap[k] && String(missMap[k]).trim(), "follow-up filled " + k + " " + missMap[k]);
+  }
+  assert(missMap.route === "АВИА", "follow-up АВИА");
+  assert(/https?:\/\//.test(missMap.cargo || "") && /фото/i.test(missMap.cargo || ""), "link+photo in cargo");
+  const missPoll2 = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=${missSid}`);
+  assert(
+    (missPoll2.data.messages || []).some((m) => m.direction === "outbound" && /Итоговые данные/i.test(m.body)),
+    "итоговые данные after full card",
+  );
+
+  r = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: {
+      chatId: "tg-photo-" + id,
+      text: "фото модуля памяти",
+      photoFileId: "AgAC-test-file-id",
+      name: "ФотоКлиент",
+    },
+  });
+  assert(r.status === 200 && !r.data.leadId, "telegram photo note does not auto-complete card");
+  const convPhoto = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  assert(
+    (convPhoto.data.messages || []).some((m) => m.direction === "inbound" && /file_id:AgAC-test-file-id/.test(m.body)),
+    "telegram file_id stored in chat",
+  );
+
   const cargoPhone = "7999666" + String(Math.floor(1000 + Math.random() * 8999));
   const cargoPhoneTg = "7999777" + String(Math.floor(1000 + Math.random() * 8999));
   const cargoText =
@@ -581,6 +658,7 @@ async function main() {
     json: { sessionId: "chat-cargo-" + id, name: "Павел", text: cargoText },
   });
   assert(r.status === 200 && r.data.leadId, "chat cargo creates lead " + JSON.stringify(r.data));
+  assert(r.data.cardComplete === true, "full cargo cardComplete");
   assert(r.data.urgent === false, "explicit cargo chat is not auto-urgent");
   const cargoContact = await req(`/api/contacts/${r.data.contactId}`, { cookie });
   const cargoMap = Object.fromEntries(
@@ -598,14 +676,18 @@ async function main() {
   assert(cargoMap.route === "АВИА", "АИВА → АВИА, got " + cargoMap.route);
   assert(/октябр/i.test(String(cargoMap.eta || "")), "cargo eta " + cargoMap.eta);
   const cargoLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
+  assert(cargoLead.data.status === "new", "complete chat lead is Новый");
   const leadMap = Object.fromEntries(
     (cargoLead.data.fieldValues || []).map((v) => [v.field.key, v.value]),
   );
   assert(leadMap.route === "АВИА", "lead card route АВИА");
+  for (const k of ["telegram", "max", "cargo", "weight", "volume", "origin", "destination", "route", "eta"]) {
+    assert(leadMap[k] && String(leadMap[k]).trim() !== "", "no empty card field " + k);
+  }
   const cargoChatPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-cargo-${id}`);
   assert(
-    (cargoChatPoll.data.messages || []).some((m) => m.direction === "outbound" && /курс|ТН ВЭД|Принял/i.test(m.body)),
-    "sales bot replies in chat after cargo",
+    (cargoChatPoll.data.messages || []).some((m) => m.direction === "outbound" && /Итоговые данные/i.test(m.body)),
+    "sales bot writes итоговые данные when card is full",
   );
 
   r = await req(`/api/channels/${tgCh.id}/simulate`, {

@@ -11,4 +11,6 @@ prisma/*.db
 prisma/*.db-journal
 /tmp
 tsconfig.tsbuildinfo
+/public/uploads/*
+!/public/uploads/.gitkeep
 

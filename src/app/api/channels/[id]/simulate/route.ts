@@ -17,13 +17,17 @@ export async function POST(req: Request, ctx: Ctx) {
     const parsed = z
       .object({
         chatId: z.string().min(1),
-        text: z.string().min(1),
+        text: z.string().optional(),
         username: z.string().optional(),
         name: z.string().optional(),
         eventKey: z.string().optional(),
+        photoFileId: z.string().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Нужны chatId и text");
+    const photoNote = parsed.data.photoFileId ? `фото: file_id:${parsed.data.photoFileId}` : "";
+    const body = [parsed.data.text || "", photoNote].filter(Boolean).join("\n");
+    if (!body) return jsonError("Нужны chatId и text");
     const result = await ingestInbound({
       workspaceId: session.workspaceId,
       channelId: channel.id,
@@ -31,7 +35,7 @@ export async function POST(req: Request, ctx: Ctx) {
       externalId: parsed.data.chatId,
       username: parsed.data.username,
       name: parsed.data.name,
-      body: parsed.data.text,
+      body,
       eventKey: parsed.data.eventKey,
     });
     return NextResponse.json({ ok: true, ...result });

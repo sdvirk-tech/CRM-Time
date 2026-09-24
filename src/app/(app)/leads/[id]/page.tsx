@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { sourceLabel } from "@/lib/labels";
+import { leadStatusLabel, sourceLabel } from "@/lib/labels";
 import { CargoCard } from "@/components/CargoCard";
 
 export default function LeadPage() {
@@ -55,7 +55,7 @@ export default function LeadPage() {
         {lead.urgent && <span className="urgent-badge">срочно</span>}
       </div>
       <p className="mt-2 text-muted">
-        Источник: {sourceLabel(lead.source, "long")} · статус {lead.status} ·{" "}
+        Источник: {sourceLabel(lead.source, "long")} · статус {leadStatusLabel(lead.status)} ·{" "}
         {lead.assignee ? lead.assignee.name : "без ответственного"}
       </p>
       <p className="mt-4">

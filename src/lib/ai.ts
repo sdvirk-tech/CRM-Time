@@ -1,4 +1,4 @@
-import { extractCargoFromText } from "./sales";
+import { extractCargoFromText, formatItogo, isCardComplete, nextAsk, missingCardSlots } from "./sales";
 import { env } from "./env";
 import { sanitizeModelText } from "./dialog";
 
@@ -139,9 +139,10 @@ export async function runModel(opts: {
     const isB = opts.model === "ok-b";
     if (opts.system.includes("ROLE=parse_cargo_json")) {
       const cargo = extractCargoFromText(opts.user);
+      const ready = isCardComplete(cargo);
       return sanitizeModelText(
         JSON.stringify({
-          name: cargo.name || "из текста",
+          name: cargo.name ?? null,
           phone: cargo.phone ?? null,
           telegram: cargo.telegram ?? null,
           max: cargo.max ?? null,
@@ -152,7 +153,7 @@ export async function runModel(opts: {
           destination: cargo.destination ?? null,
           route: cargo.route ?? null,
           eta: cargo.eta ?? null,
-          ready: cargo.ready,
+          ready,
           summary: cargo.summary || opts.user.slice(0, 180),
           fields: {
             ...(cargo.telegram ? { telegram: cargo.telegram } : {}),
@@ -170,22 +171,23 @@ export async function runModel(opts: {
     }
     const byBook = opts.system.includes("--- знания ---") ? "По методике. " : "";
     const tag = isB ? "модель B. " : "";
-    const sales = /Ты МАКС|код ТН ВЭД/i.test(opts.system);
+    const sales = /Ты МАКС|код ТН ВЭД|карточка/i.test(opts.system);
     if (sales) {
+      const byCardAsk = opts.system.match(/Спроси следующее одним предложением:\s*([^\n]+)/);
+      if (byCardAsk && /Нет:/.test(opts.system) && !/Всё собрано/.test(opts.system)) {
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${byCardAsk[1]}`);
+      }
       const cargo = extractCargoFromText(opts.user);
-      if (!cargo.cargo && !cargo.weight && !cargo.route) {
+      const missing = missingCardSlots(cargo);
+      if (/Всё собрано/.test(opts.system) || missing.length === 0) {
+        return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${formatItogo(cargo)}`);
+      }
+      if (!cargo.cargo && !cargo.weight && !cargo.route && missing.includes("cargo")) {
         return sanitizeModelText(
           `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.`,
         );
       }
-      if (!/^\s*(цб|курс|официальн)/i.test(opts.user.split("клиент:").pop() || opts.user) && cargo.cargo) {
-        return sanitizeModelText(
-          `<think>не клиенту</think>${byBook}${tag}Принял: ${cargo.cargo}${cargo.route ? `, ${cargo.route}` : ""}. Курс для расчёта — ЦБ РФ на сегодня или ваш расчётный?`,
-        );
-      }
-      return sanitizeModelText(
-        `<think>не клиенту</think>${byBook}${tag}Данные по грузу есть. Напишите курс ЦБ или своё число — тогда ориентир. К какому месяцу груз должен быть в городе назначения?`,
-      );
+      return sanitizeModelText(`<think>не клиенту</think>${byBook}${tag}${nextAsk(missing)}`);
     }
     return sanitizeModelText(
       `<think>не клиенту</think>${byBook}${tag}Здравствуйте! Спасибо за обращение. Мы получили: «${opts.user.slice(0, 120)}». Уточните, пожалуйста, удобное время для связи.`,

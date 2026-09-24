@@ -3,7 +3,17 @@ import { logActivity } from "./activity";
 import { asConfig } from "./workspace";
 import { parseBinding, runModel } from "./ai";
 import { validateField } from "./validators";
-import { cargoBagFromParsed, extractCargoFromText, normalizeRoute } from "./sales";
+import {
+  cargoBagFromParsed,
+  extractCargoFromText,
+  formatItogo,
+  isCardComplete,
+  isGenericName,
+  missingCardSlots,
+  normalizeRoute,
+  snapshotFromBag,
+  withCardState,
+} from "./sales";
 import { defaultProcessPrompt } from "./workspace";
 import { deliverOutbound } from "./outbound";
 import {
@@ -27,6 +37,7 @@ export type IngestInput = {
   body: string;
   fields?: Record<string, string>;
   eventKey?: string;
+  photoNote?: string;
 };
 
 function explicitBinding(provider?: string | null, model?: string | null) {
@@ -195,7 +206,7 @@ async function upsertFields(
     const err = validateField(field.fieldType, raw, false);
     if (err) continue;
     const existing = await prisma.fieldValue.findFirst({
-      where: { workspaceId, fieldId: field.id, contactId, ...(leadId ? { leadId } : {}) },
+      where: { workspaceId, fieldId: field.id, contactId },
     });
     if (existing) {
       await prisma.fieldValue.update({ where: { id: existing.id }, data: { value: raw.trim(), leadId } });
@@ -233,6 +244,10 @@ async function sessionHistory(conversationId: string) {
 }
 
 export async function ingestInbound(input: IngestInput) {
+  if (input.photoNote) {
+    const note = input.photoNote.trim();
+    if (note && !input.body.includes(note)) input.body = [input.body, note].filter(Boolean).join("\n");
+  }
   if (!input.phone) {
     const found = extractPhone(input.body);
     if (found) input.phone = found;
@@ -256,13 +271,6 @@ export async function ingestInbound(input: IngestInput) {
   }
 
   const processes = await loadProcesses(input.workspaceId);
-  const flow = await prisma.flow.findFirst({
-    where: { workspaceId: input.workspaceId },
-    include: { blocks: { orderBy: { position: "asc" } } },
-  });
-  const hasCreateLeadAction = Boolean(
-    flow?.blocks.some((b) => b.type === "action" && asConfig(b.config).actionType === "create_lead"),
-  );
   const needsWatch = processes
     .filter((p) => p.type === "parse_inbound" || p.type === "draft_reply")
     .some((p) => !p.explicit);
@@ -280,7 +288,7 @@ export async function ingestInbound(input: IngestInput) {
     input.body,
   );
 
-  const contact = await findOrCreateContact(input);
+  let contact = await findOrCreateContact(input);
   let conversation = await prisma.conversation.findFirst({
     where: { workspaceId: input.workspaceId, contactId: contact.id, channelId: input.channelId },
   });
@@ -456,19 +464,27 @@ export async function ingestInbound(input: IngestInput) {
     }
   }
 
-  const heuristic = extractCargoFromText([history, input.body].filter(Boolean).join("\n"));
-  const parsedName =
-    (typeof parsed.name === "string" && parsed.name) || heuristic.name || "";
+  const heuristic = extractCargoFromText(
+    [history, input.body, input.photoNote].filter(Boolean).join("\n"),
+  );
+  const priorVals = await prisma.fieldValue.findMany({
+    where: { workspaceId: input.workspaceId, contactId: contact.id },
+    include: { field: true },
+  });
+  const priorBag: Record<string, string> = {};
+  for (const v of priorVals) {
+    if (v.value.trim()) priorBag[v.field.key] = v.value.trim();
+  }
+  const parsedName = (typeof parsed.name === "string" && parsed.name) || heuristic.name || "";
   const parsedPhone =
     (typeof parsed.phone === "string" && parsed.phone) || heuristic.phone || "";
   const parsedTelegram =
     (typeof parsed.telegram === "string" && parsed.telegram) || heuristic.telegram || "";
-  const parsedReady = parsed.ready === true || heuristic.ready;
   const parsedSummary =
     (typeof parsed.summary === "string" && parsed.summary) || heuristic.summary || "";
 
-  if (parsedName && contact.name === "Без имени") {
-    await prisma.contact.update({ where: { id: contact.id }, data: { name: parsedName } });
+  if (parsedName && !isGenericName(parsedName) && (contact.name === "Без имени" || isGenericName(contact.name))) {
+    contact = await prisma.contact.update({ where: { id: contact.id }, data: { name: parsedName } });
   }
   if (parsedPhone && !contact.phone) {
     await prisma.contact.update({ where: { id: contact.id }, data: { phone: parsedPhone } });
@@ -483,6 +499,7 @@ export async function ingestInbound(input: IngestInput) {
   }
 
   const cargoBag = cargoBagFromParsed(parsed, {
+    ...priorBag,
     ...(heuristic.telegram ? { telegram: heuristic.telegram } : {}),
     ...(heuristic.max ? { max: heuristic.max } : {}),
     ...(heuristic.cargo ? { cargo: heuristic.cargo } : {}),
@@ -493,17 +510,27 @@ export async function ingestInbound(input: IngestInput) {
     ...(heuristic.route ? { route: heuristic.route } : {}),
     ...(heuristic.eta ? { eta: heuristic.eta } : {}),
     ...(input.fields ?? {}),
-    ...(input.username && !parsedTelegram ? { telegram: input.username } : {}),
+    ...(input.username && !parsedTelegram
+      ? { telegram: input.username.startsWith("@") ? input.username : `@${input.username}` }
+      : {}),
   });
+  const nameNow =
+    (parsedName && !isGenericName(parsedName) ? parsedName : "") ||
+    (!isGenericName(contact.name) ? contact.name : "") ||
+    undefined;
+  const phoneNow = parsedPhone || contact.phone || undefined;
+  const snap = snapshotFromBag(cargoBag, nameNow, phoneNow);
+  const missing = missingCardSlots(snap);
+  const cardComplete = isCardComplete(snap);
 
-  const shouldCreateLead =
-    input.source === "web_form" || hasCreateLeadAction || handoff || parsedReady || Boolean(cargoBag.cargo);
+  const shouldCreateLead = input.source === "web_form" || handoff || cardComplete;
   let leadId: string | null = null;
   if (shouldCreateLead) {
     const existing =
       input.source !== "web_form"
         ? await prisma.lead.findFirst({ where: { conversationId: conversation.id } })
         : null;
+    const itogo = cardComplete ? formatItogo(snap) : "";
     if (existing) {
       leadId = existing.id;
       if ((needsWatch || handoff) && assigneeId) {
@@ -512,10 +539,10 @@ export async function ingestInbound(input: IngestInput) {
           data: { urgent: true, assigneeId },
         });
       }
-      if (parsedSummary) {
+      if (itogo || parsedSummary) {
         await prisma.lead.update({
           where: { id: existing.id },
-          data: { comment: sanitizeModelText(parsedSummary).slice(0, 400) },
+          data: { comment: sanitizeModelText(itogo || parsedSummary).slice(0, 800) },
         });
       }
     } else {
@@ -528,7 +555,7 @@ export async function ingestInbound(input: IngestInput) {
           source: input.source,
           urgent: needsWatch || handoff,
           assigneeId: needsWatch || handoff ? assigneeId : null,
-          comment: sanitizeModelText(parsedSummary || input.body).slice(0, 400),
+          comment: sanitizeModelText(itogo || parsedSummary || input.body).slice(0, 800),
         },
       });
       leadId = lead.id;
@@ -548,7 +575,11 @@ export async function ingestInbound(input: IngestInput) {
   if (draft && !humanOwns) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
-      const system = withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles);
+      const system = withCardState(
+        withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles),
+        snap,
+        missing,
+      );
       const text = await runModel({
         provider: binding.provider,
         model: binding.model,
@@ -643,5 +674,7 @@ export async function ingestInbound(input: IngestInput) {
     urgent: Boolean(conv?.urgent),
     start: false,
     greeting: null as string | null,
+    cardComplete,
+    missing,
   };
 }

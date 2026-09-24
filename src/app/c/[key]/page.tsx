@@ -10,6 +10,7 @@ export default function PublicChatPage() {
   const [sessionId, setSessionId] = useState("");
   const [name, setName] = useState("");
   const [text, setText] = useState("");
+  const [photo, setPhoto] = useState<File | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState("");
 
@@ -46,18 +47,29 @@ export default function PublicChatPage() {
 
   async function send(e: FormEvent) {
     e.preventDefault();
-    if (!text.trim()) return;
-    const res = await fetch(`/api/ingest/web-chat/${params.key}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, name: name || undefined, text }),
-    });
+    if (!text.trim() && !photo) return;
+    let res: Response;
+    if (photo) {
+      const form = new FormData();
+      form.set("sessionId", sessionId);
+      if (name) form.set("name", name);
+      if (text.trim()) form.set("text", text.trim());
+      form.set("photo", photo);
+      res = await fetch(`/api/ingest/web-chat/${params.key}`, { method: "POST", body: form });
+    } else {
+      res = await fetch(`/api/ingest/web-chat/${params.key}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, name: name || undefined, text }),
+      });
+    }
     const data = await res.json();
     if (!res.ok) {
       setStatus(data.error || "Ошибка");
       return;
     }
     setText("");
+    setPhoto(null);
     setStatus("");
     await load();
   }
@@ -86,13 +98,23 @@ export default function PublicChatPage() {
         ))}
         <li id="chat-end" className="h-0 list-none p-0" />
       </ol>
-      <form onSubmit={send} className="mt-3 flex gap-2">
+      <form onSubmit={send} className="mt-3 flex flex-wrap items-center gap-2">
         <input
-          className="flex-1 rounded border border-line bg-slot px-3 py-2"
+          className="min-w-[12rem] flex-1 rounded border border-line bg-slot px-3 py-2"
           placeholder="Сообщение"
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
+        <label className="cursor-pointer rounded border border-line px-3 py-2 text-sm">
+          Фото
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        {photo && <span className="text-xs text-muted">{photo.name}</span>}
         <button className="rounded bg-accent px-4 py-2 text-ink">Отправить</button>
       </form>
       {status && <p className="mt-2 text-sm text-urgent">{status}</p>}
