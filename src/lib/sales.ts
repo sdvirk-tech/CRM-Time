@@ -173,7 +173,7 @@ function hasPhoto(cargo: string) {
   return /фото|file_id:|\/uploads\//i.test(cargo);
 }
 function hasInvoice(cargo: string) {
-  return /инвойс|invoice|\d[\d\s]{2,}\s*(usd|eur|\$|₽|руб)/i.test(cargo);
+  return /инвойс|invoice|\d[\d\s.,]{1,12}\s*(usd|eur|\$|₽|руб)/i.test(cargo);
 }
 function hasQty(cargo: string) {
   return /\d+\s*(шт|pcs|мест)/i.test(cargo);
@@ -274,7 +274,9 @@ export function extractCargoFromText(text: string): CargoExtract {
   const photoNotes = text.match(/фото:\s*(file_id:[^\s]+|\/uploads\/[^\s]+|https?:\/\/[^\s]+)/gi) || [];
   for (const p of photoNotes) out.cargo = appendCargo(out.cargo, p);
   if (/фото\s+(есть|нет)/i.test(text) && out.cargo) out.cargo = appendCargo(out.cargo, text.match(/фото\s+(есть|нет)/i)![0]);
-  const inv = text.match(/(?:инвойсн\w*\s*(?:стоимость)?|invoice)\s*:?\s*(\d[\d\s]*(?:usd|eur|\$|₽|руб)?)/i);
+  const inv = text.match(
+    /(?:инвойс[а-яё]*\s*(?:стоимость)?|invoice|инвойсная\s+стоимость)\s*:?\s*(\d[\d\s.,]*\s*(?:usd|eur|\$|₽|руб)?)/i,
+  );
   if (inv) out.cargo = appendCargo(out.cargo, `инвойс ${inv[1].trim()}`);
   const qty = text.match(/(\d+)\s*(шт|мест)/i);
   if (qty) out.cargo = appendCargo(out.cargo, `${qty[1]} ${qty[2]}`);
