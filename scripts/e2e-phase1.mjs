@@ -744,6 +744,7 @@ async function main() {
     },
   });
   assert(r.status === 200 && r.data.leadId, "telegram cargo creates lead");
+  const tgCargoContactId = r.data.contactId;
   const tgCargoConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
   const tgDraft = [...(tgCargoConv.data.messages || [])].reverse().find((m) => m.direction === "draft");
   assert(tgDraft && /100% фрахта|НДС|курс/i.test(tgDraft.body), "telegram post-card draft for manager");
@@ -762,7 +763,7 @@ async function main() {
     (tgAfterSend.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта/i.test(m.body)),
     "telegram outbound after manager send",
   );
-  const tgCargoContact = await req(`/api/contacts/${r.data.contactId}`, { cookie });
+  const tgCargoContact = await req(`/api/contacts/${tgCargoContactId}`, { cookie });
   const tgCargoMap = Object.fromEntries(
     (tgCargoContact.data.fieldValues || []).map((v) => [v.field.key, v.value]),
   );
