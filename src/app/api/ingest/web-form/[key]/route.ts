@@ -43,12 +43,13 @@ export async function POST(req: Request, ctx: Ctx) {
 
   const custom = await prisma.customField.findMany({ where: { workspaceId: channel.workspaceId } });
   const fields: Record<string, string> = {};
-  // Короткая форма: только имя и телефон. Груз и ТН ВЭД — в чате.
+  // Короткая форма: имя и телефон. Лишние ключи (ТН ВЭД и др.) — валидатор; брак не создаёт лид.
   for (const field of custom) {
     const value = String(payload[field.key] ?? "").trim();
     if (!value) continue;
     const err = validateField(field.fieldType, value, false);
-    if (!err) fields[field.key] = value;
+    if (err) return jsonError(err, 400, { field: field.key });
+    fields[field.key] = value;
   }
 
   const bodyParts = [

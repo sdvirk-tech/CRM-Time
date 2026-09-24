@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jsonError, jsonWithSession, readSession } from "@/lib/auth";
 import { applyVedTemplate, ensureWorkspaceFlow } from "@/lib/workspace";
+import { deployMode } from "@/lib/env";
 import { z } from "zod";
 
 const schema = z.object({
@@ -17,6 +18,11 @@ export async function POST(req: Request) {
 
   const existing = await prisma.workspaceMember.findFirst({ where: { userId: session.userId } });
   if (existing) return jsonError("Онбординг уже пройден");
+
+  if (deployMode() === "box") {
+    const wsCount = await prisma.workspace.count();
+    if (wsCount > 0) return jsonError("В режиме коробки один воркспейс", 403);
+  }
 
   const body = await req.json().catch(() => null);
   const parsed = schema.safeParse(body);

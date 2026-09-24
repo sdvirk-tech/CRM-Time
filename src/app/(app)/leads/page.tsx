@@ -55,7 +55,7 @@ export default function LeadsPage() {
             <h2 className="px-2 text-lg font-semibold">{col.title}</h2>
             <ul className="mt-3 space-y-2">
               {items
-                .filter((l) => l.status === col.key)
+                .filter((l) => l.status === col.key || (col.key === "rejected" && l.status === "lost"))
                 .map((l) => (
                   <li key={l.id} className="rounded-xl border border-line bg-paper p-3">
                     <div className="flex items-start justify-between gap-2">

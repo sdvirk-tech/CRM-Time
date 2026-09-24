@@ -8,7 +8,7 @@ export function leadStatusLabel(status: string) {
   if (status === "new") return "Новый";
   if (status === "in_progress") return "В работе";
   if (status === "qualified") return "Квалифицирован";
-  if (status === "lost") return "Отказ";
+  if (status === "lost" || status === "rejected") return "Отказ";
   return status;
 }
 
