@@ -790,10 +790,11 @@ async function main() {
   const cargoLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
   assert(cargoLead.data.status === "new", "complete chat lead is Новый");
   assert(cargoLead.data.fx, "cbr rates on lead card");
-  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "qualified" } });
-  assert(r.status === 200 && r.data.status === "qualified", "one-click qualified from card");
-  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
-  assert(r.status === 200 && r.data.status === "rejected", "one-click rejected from card");
+  const cargoConvId = r.data.conversationId;
+  const q = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "qualified" } });
+  assert(q.status === 200 && q.data.status === "qualified", "one-click qualified from card");
+  const rej = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
+  assert(rej.status === 200 && rej.data.status === "rejected", "one-click rejected from card");
   const leadMap = Object.fromEntries(
     (cargoLead.data.fieldValues || []).map((v) => [v.field.key, v.value]),
   );
@@ -806,7 +807,7 @@ async function main() {
     !(cargoChatPoll.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта|Черновик менеджеру/i.test(m.body)),
     "explicit model does not auto-send post-card commercial reply",
   );
-  const cargoConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
+  const cargoConv = await req(`/api/conversations/${cargoConvId}`, { cookie });
   const cargoDraft = [...(cargoConv.data.messages || [])].reverse().find((m) => m.direction === "draft");
   assert(cargoDraft && /100% фрахта в ТС/i.test(cargoDraft.body), "АВИА duty hint in manager draft");
   if (cargoLead.data.fx?.usd) {
@@ -816,7 +817,7 @@ async function main() {
   assert((cargoConv.data.contact.fieldValues || []).some((v) => v.field.key === "weight" && /12/.test(v.value)), "inbox shows filled card");
   const inboxCard = await req("/api/inbox", { cookie });
   assert(
-    (inboxCard.data.items || []).some((i) => i.id === r.data.conversationId && i.cardReady === true),
+    (inboxCard.data.items || []).some((i) => i.id === cargoConvId && i.cardReady === true),
     "inbox flags card ready",
   );
   const commercial = cargoDraft.body;
