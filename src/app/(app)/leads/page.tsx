@@ -30,18 +30,31 @@ export default function LeadsPage() {
   const [stats, setStats] = useState<DayStats | null>(null);
   const [tag, setTag] = useState("");
   const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [members, setMembers] = useState<{ userId: string; name: string }[]>([]);
+  const [bulkTag, setBulkTag] = useState("");
+  const [bulkAssignee, setBulkAssignee] = useState("");
+  const [bulkStatus, setBulkStatus] = useState("in_progress");
+  const [bulkMsg, setBulkMsg] = useState("");
 
   async function load(filter = tag) {
     const q = filter ? `?tag=${encodeURIComponent(filter)}` : "";
-    const [d, day, t] = await Promise.all([
+    const [d, day, t, team] = await Promise.all([
       fetch("/api/leads" + q).then((r) => r.json()),
       fetch("/api/stats").then((r) => r.json()),
       fetch("/api/tags").then((r) => r.json()),
+      fetch("/api/team").then((r) => r.json()),
     ]);
     setItems(d.items ?? []);
     setNewCount(d.newCount ?? 0);
     setStats(day);
     setTags(t.items ?? []);
+    setMembers((team.members || []).map((m: { userId: string; name: string }) => ({ userId: m.userId, name: m.name })));
+    setSelected((prev) => {
+      const next: Record<string, boolean> = {};
+      for (const l of d.items ?? []) if (prev[l.id]) next[l.id] = true;
+      return next;
+    });
   }
 
   useEffect(() => {
@@ -51,6 +64,31 @@ export default function LeadsPage() {
   async function claim(id: string) {
     await fetch(`/api/leads/${id}/claim`, { method: "POST" });
     await load();
+  }
+
+  const picked = items.filter((l) => selected[l.id]).map((l) => l.id);
+
+  async function bulk(action: "tag" | "assign" | "status") {
+    if (picked.length === 0) {
+      setBulkMsg("Отметьте хотя бы один лид");
+      return;
+    }
+    const body: Record<string, unknown> = { leadIds: picked, action };
+    if (action === "tag") body.tagName = bulkTag.trim();
+    if (action === "assign") body.assigneeId = bulkAssignee || null;
+    if (action === "status") body.status = bulkStatus;
+    const res = await fetch("/api/leads/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) setBulkMsg(d.error || "Ошибка");
+    else {
+      setBulkMsg(`Обновили ${d.updated} лид(ов)`);
+      setSelected({});
+      await load();
+    }
   }
 
   return (
@@ -87,6 +125,59 @@ export default function LeadsPage() {
         Скачать CSV
       </a>
       <DayOverview stats={stats} onSla={load} />
+      <section className="mt-6 max-w-3xl rounded-2xl border border-accent bg-mist p-4">
+        <h2 className="text-lg font-semibold">Массовые действия</h2>
+        <p className="mt-1 text-sm text-muted">Отметьте лиды в колонках — метка, назначение или статус. Удалить все нельзя.</p>
+        <p className="mt-2 text-sm">Выбрано: {picked.length}</p>
+        <div className="mt-3 flex flex-wrap items-end gap-2 text-sm">
+          <label className="block">
+            Метка
+            <input
+              className="mt-1 rounded-xl border border-line bg-paper px-3 py-2"
+              value={bulkTag}
+              onChange={(e) => setBulkTag(e.target.value)}
+              placeholder="VIP"
+            />
+          </label>
+          <button type="button" className="rounded-xl bg-accent px-3 py-2 text-ink" onClick={() => bulk("tag")}>
+            Поставить метку
+          </button>
+          <label className="block">
+            Менеджер
+            <select
+              className="mt-1 rounded-xl border border-line bg-paper px-3 py-2"
+              value={bulkAssignee}
+              onChange={(e) => setBulkAssignee(e.target.value)}
+            >
+              <option value="">снять</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="rounded-xl border border-line px-3 py-2" onClick={() => bulk("assign")}>
+            Назначить
+          </button>
+          <label className="block">
+            Статус
+            <select
+              className="mt-1 rounded-xl border border-line bg-paper px-3 py-2"
+              value={bulkStatus}
+              onChange={(e) => setBulkStatus(e.target.value)}
+            >
+              <option value="new">Новый</option>
+              <option value="in_progress">В работе</option>
+              <option value="qualified">Квалифицирован</option>
+            </select>
+          </label>
+          <button type="button" className="rounded-xl border border-line px-3 py-2" onClick={() => bulk("status")}>
+            Сменить статус
+          </button>
+        </div>
+        {bulkMsg && <p className="ok-banner mt-2 rounded px-3 py-2 text-sm">{bulkMsg}</p>}
+      </section>
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col) => (
           <section key={col.key} className="rounded-2xl border border-accent bg-mist p-3">
@@ -97,9 +188,17 @@ export default function LeadsPage() {
                 .map((l) => (
                   <li key={l.id} className="rounded-xl border border-line bg-paper p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <Link href={`/leads/${l.id}`} className="font-medium">
-                        {l.contact.name}
-                      </Link>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={Boolean(selected[l.id])}
+                          onChange={(e) => setSelected((s) => ({ ...s, [l.id]: e.target.checked }))}
+                        />
+                        <Link href={`/leads/${l.id}`} className="font-medium">
+                          {l.contact.name}
+                        </Link>
+                      </label>
                       {l.urgent && <span className="urgent-badge">срочно</span>}
                     </div>
                     <p className="mt-1 text-xs text-muted">

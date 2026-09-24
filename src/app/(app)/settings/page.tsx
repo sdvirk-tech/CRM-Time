@@ -22,6 +22,10 @@ export default function SettingsPage() {
   const [csvText, setCsvText] = useState("имя,телефон,телеграм,макс\n");
   const [importMsg, setImportMsg] = useState("");
   const [importErrors, setImportErrors] = useState<ImportErr[]>([]);
+  const [workHoursEnabled, setWorkHoursEnabled] = useState(false);
+  const [workHoursStart, setWorkHoursStart] = useState("09:00");
+  const [workHoursEnd, setWorkHoursEnd] = useState("18:00");
+  const [workHoursTz, setWorkHoursTz] = useState("Europe/Moscow");
 
   async function load() {
     const [ws, me] = await Promise.all([fetch("/api/workspace").then((r) => r.json()), fetch("/api/auth/me").then((r) => r.json())]);
@@ -35,6 +39,10 @@ export default function SettingsPage() {
     setHookUrl(ws.outboundWebhookUrl || "");
     setHookHasSecret(Boolean(ws.outboundWebhookHasSecret));
     setHookLast(ws.outboundWebhookLastError || "");
+    setWorkHoursEnabled(Boolean(ws.workHoursEnabled));
+    setWorkHoursStart(ws.workHoursStart || "09:00");
+    setWorkHoursEnd(ws.workHoursEnd || "18:00");
+    setWorkHoursTz(ws.workHoursTz || "Europe/Moscow");
   }
 
   useEffect(() => {
@@ -53,6 +61,10 @@ export default function SettingsPage() {
         defaultModel: defaultModel || null,
         outboundWebhookUrl: hookUrl,
         outboundWebhookSecret: hookSecret || undefined,
+        workHoursEnabled,
+        workHoursStart,
+        workHoursEnd,
+        workHoursTz,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -136,6 +148,52 @@ export default function SettingsPage() {
             />
             По кругу
           </label>
+        </fieldset>
+        <fieldset className="space-y-2 rounded-xl border border-line bg-slot p-4 text-sm">
+          <legend className="px-1 font-medium">Рабочие часы</legend>
+          <p className="text-muted">
+            Вне часов — один короткий автоответ в чат сайта и Telegram («мы на связи с …»). Коммерческий текст сам не уходит.
+          </p>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={workHoursEnabled}
+              onChange={(e) => setWorkHoursEnabled(e.target.checked)}
+              disabled={!owner}
+            />
+            Включить рабочие часы
+          </label>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <label className="block">
+              С
+              <input
+                className="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2"
+                value={workHoursStart}
+                onChange={(e) => setWorkHoursStart(e.target.value)}
+                disabled={!owner}
+                placeholder="09:00"
+              />
+            </label>
+            <label className="block">
+              До
+              <input
+                className="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2"
+                value={workHoursEnd}
+                onChange={(e) => setWorkHoursEnd(e.target.value)}
+                disabled={!owner}
+                placeholder="18:00"
+              />
+            </label>
+            <label className="block">
+              Часовой пояс
+              <input
+                className="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2"
+                value={workHoursTz}
+                onChange={(e) => setWorkHoursTz(e.target.value)}
+                disabled={!owner}
+              />
+            </label>
+          </div>
         </fieldset>
         <label className="block text-sm">
           Дефолт модели (запасной ключ, не автопилот)

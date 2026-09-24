@@ -27,6 +27,10 @@ export async function GET() {
       outboundWebhookHasSecret: Boolean(workspace.outboundWebhookSecretEnc),
       outboundWebhookLastAt: workspace.outboundWebhookLastAt,
       outboundWebhookLastError: workspace.outboundWebhookLastError || "",
+      workHoursEnabled: workspace.workHoursEnabled,
+      workHoursStart: workspace.workHoursStart,
+      workHoursEnd: workspace.workHoursEnd,
+      workHoursTz: workspace.workHoursTz,
       deployMode: deployMode(),
       dataOnThisMachine: deployMode() === "box",
       publicRegistration: deployMode() !== "box",
@@ -51,6 +55,10 @@ export async function PATCH(req: Request) {
         outboundWebhookUrl: z.string().max(500).optional().nullable(),
         outboundWebhookSecret: z.string().max(200).optional(),
         outboundWebhookClearSecret: z.boolean().optional(),
+        workHoursEnabled: z.boolean().optional(),
+        workHoursStart: z.string().max(8).optional(),
+        workHoursEnd: z.string().max(8).optional(),
+        workHoursTz: z.string().max(64).optional(),
       })
       .safeParse(body);
     if (!parsed.success) return jsonError("Некорректные данные");
@@ -89,6 +97,10 @@ export async function PATCH(req: Request) {
       outboundWebhookHasSecret: Boolean(workspace.outboundWebhookSecretEnc),
       outboundWebhookLastAt: workspace.outboundWebhookLastAt,
       outboundWebhookLastError: workspace.outboundWebhookLastError || "",
+      workHoursEnabled: workspace.workHoursEnabled,
+      workHoursStart: workspace.workHoursStart,
+      workHoursEnd: workspace.workHoursEnd,
+      workHoursTz: workspace.workHoursTz,
     });
   });
 }

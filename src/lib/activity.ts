@@ -40,11 +40,31 @@ export async function logActivity(opts: {
   }
 }
 
+export async function logCardView(opts: {
+  workspaceId: string;
+  contactId?: string;
+  leadId?: string;
+  actor: string;
+  kind: "contact" | "lead";
+}) {
+  const message =
+    opts.kind === "lead" ? "Открыли карточку лида" : "Открыли карточку контакта";
+  await logActivity({
+    workspaceId: opts.workspaceId,
+    contactId: opts.contactId,
+    leadId: opts.leadId,
+    actor: opts.actor,
+    event: "view",
+    message,
+  });
+}
+
 export async function listTimeline(opts: {
   workspaceId: string;
   contactId?: string;
   leadId?: string;
   take?: number;
+  includeViews?: boolean;
 }) {
   const or: Record<string, unknown>[] = [];
   if (opts.leadId) {
@@ -68,8 +88,13 @@ export async function listTimeline(opts: {
   } else {
     return [];
   }
+  const where: { workspaceId: string; OR: Record<string, unknown>[]; event?: { not: string } } = {
+    workspaceId: opts.workspaceId,
+    OR: or,
+  };
+  if (!opts.includeViews) where.event = { not: "view" };
   return prisma.activityEvent.findMany({
-    where: { workspaceId: opts.workspaceId, OR: or },
+    where,
     orderBy: { createdAt: "desc" },
     take: opts.take ?? 40,
   });

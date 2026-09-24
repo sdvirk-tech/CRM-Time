@@ -43,5 +43,9 @@ export function activityLabel(event: string) {
   if (event === "task") return "задача";
   if (event === "pin") return "закрепили";
   if (event === "import") return "импорт";
+  if (event === "view") return "просмотр";
+  if (event === "snooze") return "отложили";
+  if (event === "archive") return "архив";
+  if (event === "outside_hours") return "вне часов";
   return event;
 }

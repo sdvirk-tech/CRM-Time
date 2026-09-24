@@ -11,7 +11,7 @@ import { dlpContact, maskEmailIf, maskPhoneIf, maskPii, shouldMask } from "@/lib
 import { getCbrRates } from "@/lib/cbr";
 import { findDuplicateContacts } from "@/lib/contacts";
 import { extractPhotoRefs } from "@/lib/photos";
-import { listTimeline } from "@/lib/activity";
+import { listTimeline, logCardView } from "@/lib/activity";
 import { activityLabel } from "@/lib/labels";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -30,6 +30,14 @@ export async function GET(req: Request, ctx: Ctx) {
     });
     if (!contact) return jsonError("Контакт не найден", 404);
     const format = new URL(req.url).searchParams.get("format");
+    if (!format) {
+      await logCardView({
+        workspaceId: session.workspaceId,
+        contactId: contact.id,
+        actor: session.name,
+        kind: "contact",
+      });
+    }
     const phone = maskPhoneIf(session.role, contact.phone);
     const comment = shouldMask(session.role) ? maskPii(contact.comment) : contact.comment;
     if (format === "csv") {
@@ -99,7 +107,11 @@ export async function GET(req: Request, ctx: Ctx) {
     } catch {
       duplicates = [];
     }
-    const timelineRaw = await listTimeline({ workspaceId: session.workspaceId, contactId: contact.id });
+    const timelineRaw = await listTimeline({
+      workspaceId: session.workspaceId,
+      contactId: contact.id,
+      includeViews: session.role === "owner",
+    });
     const mask = shouldMask(session.role);
     return NextResponse.json({
       ...dlpContact(session.role, contact),

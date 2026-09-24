@@ -28,7 +28,7 @@ npx prisma migrate deploy
 npm run dev
 ```
 
-Прогон приёмки по API: `npm run test:phase1` (фаза 1 + фаза 2–8; сервер должен слушать `:3000`). Отдельно фаза 2–8: `npm run test:phase2`.
+Прогон приёмки по API: `npm run test:phase1` (фаза 1 + фаза 2–9; сервер должен слушать `:3000`). Отдельно фаза 2–9: `npm run test:phase2`.
 
 | Переменная | Смысл |
 |---|---|

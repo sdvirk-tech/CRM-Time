@@ -3,13 +3,31 @@ import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { isStale, lastByDirection } from "@/lib/sla";
 import { dlpContact, dlpMessageBody } from "@/lib/dlp";
+import { releaseExpiredSnoozes } from "@/lib/snooze";
 
-export async function GET() {
+export async function GET(req: Request) {
   return withSession(async (session) => {
+    await releaseExpiredSnoozes(session.workspaceId);
+    const view = new URL(req.url).searchParams.get("view") || "active";
+    const now = new Date();
     const slaMinutes =
       (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.slaMinutes ?? 15;
+    const where =
+      view === "archived"
+        ? { workspaceId: session.workspaceId, archived: true }
+        : view === "snoozed"
+          ? {
+              workspaceId: session.workspaceId,
+              archived: false,
+              snoozedUntil: { gt: now },
+            }
+          : {
+              workspaceId: session.workspaceId,
+              archived: false,
+              OR: [{ snoozedUntil: null }, { snoozedUntil: { lte: now } }],
+            };
     const items = await prisma.conversation.findMany({
-      where: { workspaceId: session.workspaceId },
+      where,
       orderBy: [{ pinned: "desc" }, { urgent: "desc" }, { updatedAt: "desc" }],
       include: {
         contact: true,
@@ -33,6 +51,8 @@ export async function GET() {
         assigneeId: i.assigneeId,
         unread: i.unread,
         pinned: i.pinned,
+        archived: i.archived,
+        snoozedUntil: i.snoozedUntil,
         urgent: i.urgent,
         urgentReason: i.urgentReason,
         stale,

@@ -82,11 +82,18 @@ export default function ConversationPage() {
     await load();
   }
 
-  async function act(action: "take" | "reset" | "close" | "ai" | "redirect" | "pin" | "unpin") {
+  async function act(
+    action: "take" | "reset" | "close" | "ai" | "redirect" | "pin" | "unpin" | "snooze" | "unsnooze" | "archive" | "unarchive",
+    extra?: { until?: string },
+  ) {
     const res = await fetch(`/api/conversations/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, userId: action === "redirect" ? target : undefined }),
+      body: JSON.stringify({
+        action,
+        userId: action === "redirect" ? target : undefined,
+        until: extra?.until,
+      }),
     });
     const json = await res.json();
     if (!res.ok) setMsg(json.error);
@@ -96,10 +103,12 @@ export default function ConversationPage() {
     else if (action === "reset") setMsg("Сессия сброшена, клиенту ничего не ушло");
     else if (action === "pin") setMsg("Диалог закрепили");
     else if (action === "unpin") setMsg("Диалог открепили");
+    else if (action === "snooze") setMsg("Диалог отложили");
+    else if (action === "unsnooze") setMsg("Отложку сняли");
+    else if (action === "archive") setMsg("Диалог в архиве");
+    else if (action === "unarchive") setMsg("Вернули из архива");
     else setMsg("Диалог закрыт");
     await load();
-    if (res.ok && action === "ai") setMsg(json.resent ? "Вернули ИИ, последний ответ ушёл клиенту" : "Вернули ИИ");
-    if (res.ok && action === "redirect") setMsg("Перенаправили");
   }
 
   if (!data?.id) return <div className="p-8 text-muted">Загрузка…</div>;
@@ -219,6 +228,15 @@ export default function ConversationPage() {
         <p className="mt-2 text-sm">{data.contact.phone || "нет телефона"}</p>
         <button onClick={() => act(data.pinned ? "unpin" : "pin")} className="mt-3 w-full rounded-xl border border-accent bg-paper px-4 py-2 text-sm">
           {data.pinned ? "Открепить" : "Закрепить"}
+        </button>
+        <button
+          onClick={() => act("snooze", { until: new Date(Date.now() + 3600_000).toISOString() })}
+          className="mt-2 w-full rounded-xl border border-line px-4 py-2 text-sm"
+        >
+          Отложить на 1 ч
+        </button>
+        <button onClick={() => act("archive")} className="mt-2 w-full rounded-xl border border-line px-4 py-2 text-sm">
+          В архив
         </button>
         <button onClick={createLead} className="mt-3 w-full rounded-xl bg-accent px-4 py-2 text-ink">
           Создать лид

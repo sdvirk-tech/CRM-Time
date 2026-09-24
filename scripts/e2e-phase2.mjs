@@ -5,7 +5,8 @@
  * воронка/KPI, RAG-lite, PDF, DLP, 152-ФЗ, курс ЦБ, статусы, галерея, IMAP;
  * поиск, колокольчик, настройки, склейка контактов, коробка;
  * метки, внутренние заметки, шаблоны, лента;
- * задачи, закрепление, CSV-импорт, исходящий webhook, причина отказа.
+ * задачи, закрепление, CSV-импорт, исходящий webhook, причина отказа;
+ * отложить/архив, массовые лиды, рабочие часы, аудит просмотра.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
@@ -879,6 +880,72 @@ async function main() {
   assert(payload.leadId === hookLead.data.leadId, "webhook leadId");
   hookServer.close();
 
+  const snoozeUntil = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+  const snooze = await req(`/api/conversations/${convId}`, {
+    method: "PATCH",
+    cookie,
+    json: { action: "snooze", until: snoozeUntil },
+  });
+  assert(snooze.status === 200 && snooze.data.conversation.snoozedUntil, "snooze conversation");
+  const activeAfterSnooze = await req("/api/inbox?view=active", { cookie });
+  assert(!activeAfterSnooze.data.items.some((i) => i.id === convId), "snoozed hidden from active");
+  const snoozedList = await req("/api/inbox?view=snoozed", { cookie });
+  assert(snoozedList.data.items.some((i) => i.id === convId), "snoozed visible in snoozed view");
+  const unsnooze = await req(`/api/conversations/${convId}`, { method: "PATCH", cookie, json: { action: "unsnooze" } });
+  assert(unsnooze.status === 200 && !unsnooze.data.conversation.snoozedUntil, "unsnooze");
+  const archive = await req(`/api/conversations/${convId}`, { method: "PATCH", cookie, json: { action: "archive" } });
+  assert(archive.status === 200 && archive.data.conversation.archived === true, "archive");
+  const archivedList = await req("/api/inbox?view=archived", { cookie });
+  assert(archivedList.data.items.some((i) => i.id === convId), "archived list");
+  const unarchive = await req(`/api/conversations/${convId}`, { method: "PATCH", cookie, json: { action: "unarchive" } });
+  assert(unarchive.status === 200 && unarchive.data.conversation.archived === false, "unarchive");
+
+  const bulkPhone = phone();
+  const bulkLead = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Массовый", phone: bulkPhone },
+  });
+  assert(bulkLead.status === 200 && bulkLead.data.leadId, "bulk second lead");
+  const bulkTag = await req("/api/leads/bulk", {
+    method: "POST",
+    cookie,
+    json: { leadIds: [hookLead.data.leadId, bulkLead.data.leadId], action: "tag", tagName: "phase9bulk" },
+  });
+  assert(bulkTag.status === 200 && bulkTag.data.updated === 2, "bulk tag");
+  const bulkStatus = await req("/api/leads/bulk", {
+    method: "POST",
+    cookie,
+    json: { leadIds: [hookLead.data.leadId, bulkLead.data.leadId], action: "status", status: "in_progress" },
+  });
+  assert(bulkStatus.status === 200 && bulkStatus.data.status === "in_progress", "bulk status");
+  const bulkTagged = await req("/api/leads?tag=phase9bulk", { cookie });
+  assert(bulkTagged.data.items.length >= 2, "bulk tag filter");
+
+  const hoursOn = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { workHoursEnabled: true, workHoursStart: "09:00", workHoursEnd: "18:00", workHoursTz: "Europe/Moscow" },
+  });
+  assert(hoursOn.status === 200 && hoursOn.data.workHoursEnabled === true, "work hours saved");
+  const chatSession = "phase9-" + id;
+  const chatIn = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: chatSession, text: "Привет, нужен расчёт", name: "Ночной клиент" },
+  });
+  assert(chatIn.status === 200 && chatIn.data.conversationId, "web chat outside hours");
+  const chatPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=${encodeURIComponent(chatSession)}`);
+  assert(chatPoll.status === 200, "web chat poll");
+  const autoReply = (chatPoll.data.messages || []).find((m) => String(m.body || "").startsWith("мы на связи с"));
+  assert(autoReply, "outside hours auto-reply in chat");
+  assert(!(chatPoll.data.messages || []).some((m) => m.direction === "draft"), "no draft to client outside hours");
+
+  await req(`/api/leads/${hookLead.data.leadId}`, { cookie });
+  const leadCard = await req(`/api/leads/${hookLead.data.leadId}`, { cookie });
+  assert(leadCard.status === 200, "lead card for audit");
+  const views = (leadCard.data.timeline || []).filter((e) => e.event === "view");
+  assert(views.length >= 1, "view audit on timeline");
+  assert(views[0].label === "просмотр", "view label ru");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -890,6 +957,7 @@ async function main() {
     phase6: "search+bell+settings+merge+box",
     phase7: "tags+notes+canned+timeline",
     phase8: "tasks+pin+csv+webhook+reject",
+    phase9: "snooze+archive+bulk+hours+view-audit",
   });
 }
 

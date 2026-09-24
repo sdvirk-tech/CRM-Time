@@ -9,7 +9,7 @@ import { cargoCardPdf } from "@/lib/pdf";
 import { dlpLead, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
 import { getCbrRates } from "@/lib/cbr";
 import { extractPhotoRefs } from "@/lib/photos";
-import { logActivity, listTimeline } from "@/lib/activity";
+import { logActivity, listTimeline, logCardView } from "@/lib/activity";
 import { activityLabel } from "@/lib/labels";
 import { mapTask } from "@/lib/tasks";
 
@@ -30,6 +30,15 @@ export async function GET(req: Request, ctx: Ctx) {
     });
     if (!lead) return jsonError("Лид не найден", 404);
     const format = new URL(req.url).searchParams.get("format");
+    if (!format) {
+      await logCardView({
+        workspaceId: session.workspaceId,
+        leadId: lead.id,
+        contactId: lead.contactId,
+        actor: session.name,
+        kind: "lead",
+      });
+    }
     const values = lead.contact.fieldValues.length ? lead.contact.fieldValues : lead.fieldValues;
     const phone = maskPhoneIf(session.role, lead.contact.phone);
     const comment = shouldMask(session.role) ? maskPii(lead.comment) : lead.comment;
@@ -78,7 +87,11 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
-    const timelineRaw = await listTimeline({ workspaceId: session.workspaceId, leadId: lead.id });
+    const timelineRaw = await listTimeline({
+      workspaceId: session.workspaceId,
+      leadId: lead.id,
+      includeViews: session.role === "owner",
+    });
     const followUps = await prisma.followUp.findMany({
       where: { workspaceId: session.workspaceId, leadId: lead.id },
       orderBy: [{ doneAt: "asc" }, { dueAt: "asc" }],

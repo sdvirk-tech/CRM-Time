@@ -116,11 +116,90 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (!conv) return jsonError("Диалог не найден", 404);
     const parsed = z
       .object({
-        action: z.enum(["take", "reset", "close", "ai", "redirect", "pin", "unpin"]),
+        action: z.enum([
+          "take",
+          "reset",
+          "close",
+          "ai",
+          "redirect",
+          "pin",
+          "unpin",
+          "snooze",
+          "unsnooze",
+          "archive",
+          "unarchive",
+        ]),
         userId: z.string().optional(),
+        until: z.string().datetime().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Нужно действие");
+
+    if (parsed.data.action === "snooze") {
+      const untilRaw = parsed.data.until;
+      if (!untilRaw) return jsonError("Нужно время отложки");
+      const until = new Date(untilRaw);
+      if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+        return jsonError("Время отложки должно быть в будущем");
+      }
+      const updated = await prisma.conversation.update({
+        where: { id },
+        data: { snoozedUntil: until, archived: false, unread: false },
+      });
+      await logActivity({
+        workspaceId: session.workspaceId,
+        conversationId: id,
+        actor: session.name,
+        event: "snooze",
+        message: `Отложили до ${until.toLocaleString("ru-RU")}`,
+      });
+      return NextResponse.json({ conversation: updated });
+    }
+
+    if (parsed.data.action === "unsnooze") {
+      const updated = await prisma.conversation.update({
+        where: { id },
+        data: { snoozedUntil: null },
+      });
+      await logActivity({
+        workspaceId: session.workspaceId,
+        conversationId: id,
+        actor: session.name,
+        event: "snooze",
+        message: "Сняли отложку",
+      });
+      return NextResponse.json({ conversation: updated });
+    }
+
+    if (parsed.data.action === "archive") {
+      const updated = await prisma.conversation.update({
+        where: { id },
+        data: { archived: true, snoozedUntil: null, unread: false },
+      });
+      await logActivity({
+        workspaceId: session.workspaceId,
+        conversationId: id,
+        actor: session.name,
+        event: "archive",
+        message: "Диалог в архиве",
+      });
+      return NextResponse.json({ conversation: updated });
+    }
+
+    if (parsed.data.action === "unarchive") {
+      const updated = await prisma.conversation.update({
+        where: { id },
+        data: { archived: false },
+      });
+      await logActivity({
+        workspaceId: session.workspaceId,
+        conversationId: id,
+        actor: session.name,
+        event: "archive",
+        message: "Вернули из архива",
+      });
+      return NextResponse.json({ conversation: updated });
+    }
 
     if (parsed.data.action === "pin" || parsed.data.action === "unpin") {
       const pinned = parsed.data.action === "pin";

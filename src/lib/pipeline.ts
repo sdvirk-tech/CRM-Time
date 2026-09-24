@@ -29,6 +29,8 @@ import {
 import { loadKnowledgeForPrompt } from "./rag";
 import { formatCbrLine, getCbrRates } from "./cbr";
 import { notifyNewLead } from "./notify";
+import { isWithinWorkHours, workHoursFromWorkspace } from "./work-hours";
+import { maybeOutsideHoursReply } from "./outside-hours";
 
 export type IngestInput = {
   workspaceId: string;
@@ -356,6 +358,28 @@ export async function ingestInbound(input: IngestInput) {
     message: `${input.source}: ${input.body.slice(0, 160)}`,
   });
 
+  const wsHours = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
+  const hoursCfg = workHoursFromWorkspace(wsHours);
+  const withinHours = isWithinWorkHours(hoursCfg);
+  if (!withinHours && (input.source === "web_chat" || input.source === "telegram")) {
+    const sent = await maybeOutsideHoursReply({
+      workspaceId: input.workspaceId,
+      conversationId: conversation.id,
+      source: input.source,
+      cfg: hoursCfg,
+    });
+    if (sent) {
+      await logActivity({
+        workspaceId: input.workspaceId,
+        conversationId: conversation.id,
+        channelId: input.channelId,
+        actor: "система",
+        event: "outside_hours",
+        message: "Автоответ вне рабочих часов",
+      });
+    }
+  }
+
   if (isStartCommand(input.body)) {
     const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
     const greeting = ws.greeting?.trim() || defaultGreeting();
@@ -444,7 +468,9 @@ export async function ingestInbound(input: IngestInput) {
   const history = await sessionHistory(conversation.id);
   const parse = processes.find((p) => p.type === "parse_inbound");
   let parsed: Record<string, unknown> = {};
-  if (parse && !closed) {
+  const clientAiAllowed =
+    withinHours || (input.source !== "web_chat" && input.source !== "telegram");
+  if (parse && !closed && clientAiAllowed) {
     const binding = parse.explicit ?? parse.fallback ?? { provider: "mock", model: "ok" };
     try {
       const system = withKnowledge(parse.prompt || defaultProcessPrompt("parse_inbound"), articles);
@@ -612,7 +638,7 @@ export async function ingestInbound(input: IngestInput) {
   await upsertFields(input.workspaceId, contact.id, leadId, fieldBag);
 
   const draft = processes.find((p) => p.type === "draft_reply");
-  if (draft && !humanOwns) {
+  if (draft && !humanOwns && clientAiAllowed) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
       const fx = cardComplete ? await getCbrRates() : null;
@@ -658,6 +684,7 @@ export async function ingestInbound(input: IngestInput) {
         }
       }
       const botMayTalk =
+        withinHours &&
         draft.explicit &&
         !needsWatch &&
         !humanOwns &&

@@ -8,6 +8,8 @@ type Item = {
   id: string;
   unread: boolean;
   pinned?: boolean;
+  archived?: boolean;
+  snoozedUntil?: string | null;
   urgent: boolean;
   stale?: boolean;
   urgentReason: string | null;
@@ -29,11 +31,15 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<"all" | "unread" | "urgent" | "stale">("all");
   const [channel, setChannel] = useState<"all" | "web_form" | "telegram" | "web_chat" | "email">("all");
   const [status, setStatus] = useState<"all" | "ai" | "manager" | "closed">("all");
+  const [view, setView] = useState<"active" | "archived" | "snoozed">("active");
 
-  async function load() {
+  async function load(nextView = view) {
     const q = new URLSearchParams(window.location.search).get("filter");
     if (q === "urgent" || q === "unread" || q === "stale") setFilter(q);
-    const [inbox, day] = await Promise.all([fetch("/api/inbox").then((r) => r.json()), fetch("/api/stats").then((r) => r.json())]);
+    const [inbox, day] = await Promise.all([
+      fetch(`/api/inbox?view=${nextView}`).then((r) => r.json()),
+      fetch("/api/stats").then((r) => r.json()),
+    ]);
     setItems(inbox.items ?? []);
     setUnread(inbox.unread ?? 0);
     setStats(day);
@@ -61,6 +67,18 @@ export default function InboxPage() {
       <p className="mt-2 text-muted">Без ответа: {unread}</p>
       <DayOverview stats={stats} onSla={load} />
       <div className="mt-4 flex flex-wrap gap-2">
+        {(["active", "archived", "snoozed"] as const).map((v) => (
+          <button
+            key={v}
+            className={view === v ? "chip chip-on" : "chip"}
+            onClick={() => {
+              setView(v);
+              load(v);
+            }}
+          >
+            {v === "active" ? "активные" : v === "archived" ? "архив" : "отложенные"}
+          </button>
+        ))}
         {(["all", "unread", "urgent", "stale"] as const).map((f) => (
           <button key={f} className={filter === f ? "chip chip-on" : "chip"} onClick={() => setFilter(f)}>
             {f === "all" ? "все" : f === "unread" ? "без ответа" : f === "urgent" ? "срочно" : "завис"}
@@ -85,6 +103,7 @@ export default function InboxPage() {
               <div>
                 <p className="font-medium">
                   {item.pinned && <span className="mr-2 text-xs font-semibold">закреплено</span>}
+                  {item.snoozedUntil && <span className="mr-2 text-xs font-semibold">отложено</span>}
                   {item.contact.name}
                   {item.unread && <span className="ml-2 text-xs font-semibold">новое</span>}
                 </p>
@@ -110,20 +129,86 @@ export default function InboxPage() {
                 {item.cardReady && <span className="rounded bg-ok px-2 py-0.5 text-xs">карточка</span>}
               </div>
             </Link>
-            <button
-              type="button"
-              className="shrink-0 border-l border-line px-3 text-xs hover:bg-mist"
-              onClick={async () => {
-                await fetch(`/api/conversations/${item.id}`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action: item.pinned ? "unpin" : "pin" }),
-                });
-                await load();
-              }}
-            >
-              {item.pinned ? "Открепить" : "Закрепить"}
-            </button>
+            <div className="flex shrink-0 flex-col border-l border-line">
+              <button
+                type="button"
+                className="px-3 py-2 text-xs hover:bg-mist"
+                onClick={async () => {
+                  await fetch(`/api/conversations/${item.id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: item.pinned ? "unpin" : "pin" }),
+                  });
+                  await load();
+                }}
+              >
+                {item.pinned ? "Открепить" : "Закрепить"}
+              </button>
+              {view === "active" && (
+                <button
+                  type="button"
+                  className="border-t border-line px-3 py-2 text-xs hover:bg-mist"
+                  onClick={async () => {
+                    const until = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+                    await fetch(`/api/conversations/${item.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "snooze", until }),
+                    });
+                    await load();
+                  }}
+                >
+                  Отложить 1 ч
+                </button>
+              )}
+              {view === "snoozed" && (
+                <button
+                  type="button"
+                  className="border-t border-line px-3 py-2 text-xs hover:bg-mist"
+                  onClick={async () => {
+                    await fetch(`/api/conversations/${item.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "unsnooze" }),
+                    });
+                    await load("snoozed");
+                  }}
+                >
+                  Вернуть
+                </button>
+              )}
+              {view !== "archived" ? (
+                <button
+                  type="button"
+                  className="border-t border-line px-3 py-2 text-xs hover:bg-mist"
+                  onClick={async () => {
+                    await fetch(`/api/conversations/${item.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "archive" }),
+                    });
+                    await load();
+                  }}
+                >
+                  В архив
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="border-t border-line px-3 py-2 text-xs hover:bg-mist"
+                  onClick={async () => {
+                    await fetch(`/api/conversations/${item.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ action: "unarchive" }),
+                    });
+                    await load("archived");
+                  }}
+                >
+                  Из архива
+                </button>
+              )}
+            </div>
           </li>
         ))}
       </ul>
