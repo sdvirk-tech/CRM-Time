@@ -116,11 +116,27 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (!conv) return jsonError("Диалог не найден", 404);
     const parsed = z
       .object({
-        action: z.enum(["take", "reset", "close", "ai", "redirect"]),
+        action: z.enum(["take", "reset", "close", "ai", "redirect", "pin", "unpin"]),
         userId: z.string().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Нужно действие");
+
+    if (parsed.data.action === "pin" || parsed.data.action === "unpin") {
+      const pinned = parsed.data.action === "pin";
+      const updated = await prisma.conversation.update({
+        where: { id },
+        data: { pinned },
+      });
+      await logActivity({
+        workspaceId: session.workspaceId,
+        conversationId: id,
+        actor: session.name,
+        event: "pin",
+        message: pinned ? "Диалог закрепили" : "Диалог открепили",
+      });
+      return NextResponse.json({ conversation: updated });
+    }
 
     if (parsed.data.action === "take") {
       const updated = await prisma.conversation.update({

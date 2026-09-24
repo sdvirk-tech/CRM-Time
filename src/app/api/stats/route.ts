@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { isStale, lastByDirection, startOfToday } from "@/lib/sla";
+import { listOverdue } from "@/lib/tasks";
 
 export async function GET() {
   return withSession(async (session) => {
@@ -61,9 +62,10 @@ export async function GET() {
         assigned: mine.length,
         taken: take,
         qualified: qual,
-        conversion: take ? Math.round((qual / take) * 100) : 0,
+          conversion: take ? Math.round((qual / take) * 100) : 0,
       };
     });
+    const overdue = await listOverdue(session.workspaceId);
     return NextResponse.json({
       unread,
       newLeads,
@@ -75,6 +77,7 @@ export async function GET() {
       conversion,
       taken,
       managers,
+      overdue,
       role: session.role,
     });
   });

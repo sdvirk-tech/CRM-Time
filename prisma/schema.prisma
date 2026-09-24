@@ -19,6 +19,7 @@ model User {
   memberships  WorkspaceMember[]
   assignedLeads Lead[]           @relation("LeadAssignee")
   assignedConversations Conversation[] @relation("ConversationAssignee")
+  assignedFollowUps FollowUp[]   @relation("FollowUpAssignee")
   notifications Notification[]
   internalNotes InternalNote[]
   @@map("users")
@@ -35,6 +36,10 @@ model Workspace {
   pingEnabled      Boolean           @default(true) @map("ping_enabled")
   routingMode      String            @default("pool") @map("routing_mode")
   roundRobinAt     Int               @default(0) @map("round_robin_at")
+  outboundWebhookUrl String?         @map("outbound_webhook_url")
+  outboundWebhookSecretEnc String?   @map("outbound_webhook_secret_enc")
+  outboundWebhookLastAt DateTime?    @map("outbound_webhook_last_at")
+  outboundWebhookLastError String?   @map("outbound_webhook_last_error")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   members          WorkspaceMember[]
@@ -60,6 +65,7 @@ model Workspace {
   leadTags         LeadTag[]
   internalNotes    InternalNote[]
   cannedReplies    CannedReply[]
+  followUps        FollowUp[]
   @@map("workspaces")
 }
 
@@ -210,6 +216,7 @@ model Conversation {
   aiError     String?   @map("ai_error")
   pingDraftedAt DateTime? @map("ping_drafted_at")
   pingSentAt    DateTime? @map("ping_sent_at")
+  pinned      Boolean   @default(false)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -252,6 +259,7 @@ model Lead {
   assigneeId     String?      @map("assignee_id")
   urgent         Boolean      @default(false)
   comment        String       @default("")
+  rejectReason   String?      @map("reject_reason")
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -262,6 +270,7 @@ model Lead {
   tags           LeadTag[]
   internalNotes  InternalNote[]
   activityEvents ActivityEvent[]
+  followUps      FollowUp[]
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@map("leads")
@@ -397,6 +406,25 @@ model InternalNote {
   @@index([leadId])
   @@index([conversationId])
   @@map("internal_notes")
+}
+
+model FollowUp {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  leadId      String    @map("lead_id")
+  title       String
+  dueAt       DateTime  @map("due_at")
+  assigneeId  String?   @map("assignee_id")
+  doneAt      DateTime? @map("done_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignee    User?     @relation("FollowUpAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  @@index([workspaceId, dueAt])
+  @@index([leadId])
+  @@index([assigneeId])
+  @@map("follow_ups")
 }
 
 model CannedReply {

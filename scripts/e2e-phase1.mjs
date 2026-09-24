@@ -463,7 +463,9 @@ async function main() {
   assert(r.status === 200, "claim lead");
   assert(r.data.lead.status === "in_progress", "claim sets in_progress");
   r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
-  assert(r.status === 200 && r.data.status === "rejected", "lead Отказ");
+  assert(r.status === 400, "Отказ без причины");
+  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected", rejectReason: "дорого" } });
+  assert(r.status === 200 && r.data.status === "rejected" && r.data.rejectReason === "дорого", "lead Отказ");
   r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "in_progress" } });
   assert(r.status === 200 && r.data.status === "in_progress", "lead back in progress");
 
@@ -794,7 +796,9 @@ async function main() {
   const cargoConvId = r.data.conversationId;
   const q = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "qualified" } });
   assert(q.status === 200 && q.data.status === "qualified", "one-click qualified from card");
-  const rej = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
+  const rejEmpty = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
+  assert(rejEmpty.status === 400, "one-click rejected needs reason");
+  const rej = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected", rejectReason: "не тот груз" } });
   assert(rej.status === 200 && rej.data.status === "rejected", "one-click rejected from card");
   const leadMap = Object.fromEntries(
     (cargoLead.data.fieldValues || []).map((v) => [v.field.key, v.value]),

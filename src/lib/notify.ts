@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { channelToken, telegramSend } from "./telegram";
+import { notifyLeadWebhook } from "./webhook";
 
 export async function notifyNewLead(opts: {
   workspaceId: string;
@@ -7,6 +8,8 @@ export async function notifyNewLead(opts: {
   contactId: string;
   contactName: string;
   assigneeId?: string | null;
+  source?: string;
+  phone?: string | null;
 }) {
   try {
     const members = await prisma.workspaceMember.findMany({
@@ -47,5 +50,17 @@ export async function notifyNewLead(opts: {
     }
   } catch {
     /* колокольчик не должен ронять ingest */
+  }
+  try {
+    await notifyLeadWebhook({
+      workspaceId: opts.workspaceId,
+      leadId: opts.leadId,
+      contactId: opts.contactId,
+      contactName: opts.contactName,
+      source: opts.source || "web_form",
+      phone: opts.phone,
+    });
+  } catch {
+    /* исходящий webhook не должен ронять ingest */
   }
 }

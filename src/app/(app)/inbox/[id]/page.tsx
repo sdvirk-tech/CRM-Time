@@ -20,6 +20,7 @@ type Data = {
   aiError: string | null;
   pingDraftedAt?: string | null;
   pingSentAt?: string | null;
+  pinned?: boolean;
   assignee?: { id: string; name: string } | null;
   operators?: Operator[];
   contact: {
@@ -81,7 +82,7 @@ export default function ConversationPage() {
     await load();
   }
 
-  async function act(action: "take" | "reset" | "close" | "ai" | "redirect") {
+  async function act(action: "take" | "reset" | "close" | "ai" | "redirect" | "pin" | "unpin") {
     const res = await fetch(`/api/conversations/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -93,6 +94,8 @@ export default function ConversationPage() {
     else if (action === "redirect") setMsg("Перенаправили");
     else if (action === "take") setMsg("Взяли в работу, ИИ молчит");
     else if (action === "reset") setMsg("Сессия сброшена, клиенту ничего не ушло");
+    else if (action === "pin") setMsg("Диалог закрепили");
+    else if (action === "unpin") setMsg("Диалог открепили");
     else setMsg("Диалог закрыт");
     await load();
     if (res.ok && action === "ai") setMsg(json.resent ? "Вернули ИИ, последний ответ ушёл клиенту" : "Вернули ИИ");
@@ -119,6 +122,7 @@ export default function ConversationPage() {
           {urgentReasonLabel(data.urgentReason) && ` · ${urgentReasonLabel(data.urgentReason)}`}
           {data.pingDraftedAt && !data.pingSentAt && " · черновик пинга"}
           {data.pingSentAt && " · пинг ушёл"}
+          {data.pinned && " · закреплено"}
           {data.status === "manager" && " · у менеджера"}
           {data.status === "closed" && " · закрыто"}
         </p>
@@ -213,7 +217,10 @@ export default function ConversationPage() {
           Открыть карточку
         </Link>
         <p className="mt-2 text-sm">{data.contact.phone || "нет телефона"}</p>
-        <button onClick={createLead} className="mt-6 w-full rounded-xl bg-accent px-4 py-2 text-ink">
+        <button onClick={() => act(data.pinned ? "unpin" : "pin")} className="mt-3 w-full rounded-xl border border-accent bg-paper px-4 py-2 text-sm">
+          {data.pinned ? "Открепить" : "Закрепить"}
+        </button>
+        <button onClick={createLead} className="mt-3 w-full rounded-xl bg-accent px-4 py-2 text-ink">
           Создать лид
         </button>
         <div className="mt-4 grid gap-2">

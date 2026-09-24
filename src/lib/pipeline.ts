@@ -596,6 +596,8 @@ export async function ingestInbound(input: IngestInput) {
         contactId: contact.id,
         contactName: contact.name,
         assigneeId: lead.assigneeId,
+        source: input.source,
+        phone: contact.phone,
       });
     }
     if (!needsWatch && !handoff) {

@@ -38,6 +38,8 @@ export async function POST(_req: Request, ctx: Ctx) {
       contactId: conv.contactId,
       contactName: contact?.name || "Контакт",
       assigneeId: session.userId,
+      source: lead.source,
+      phone: contact?.phone,
     });
     return NextResponse.json({ lead });
   });

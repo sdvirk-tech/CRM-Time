@@ -8,6 +8,7 @@ import { CargoCard } from "@/components/CargoCard";
 import { LeadTags } from "@/components/LeadTags";
 import { InternalNotes } from "@/components/InternalNotes";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
+import { FollowUps } from "@/components/FollowUps";
 
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
@@ -24,9 +25,13 @@ export default function LeadPage() {
     fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
     photos?: { href: string; kind: string; label: string }[];
     tags?: { id: string; name: string }[];
+    rejectReason?: string | null;
+    followUps?: { id: string; title: string; dueAt: string; doneAt: string | null; overdue: boolean; leadId: string; assigneeId: string | null; assignee: { id: string; name: string } | null }[];
     timeline?: { id: string; event: string; label: string; actor: string; message: string; createdAt: string }[];
   } | null>(null);
   const [comment, setComment] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectErr, setRejectErr] = useState("");
 
   async function load() {
     const d = await fetch(`/api/leads/${params.id}`).then((r) => r.json());
@@ -40,11 +45,19 @@ export default function LeadPage() {
   }, [params.id]);
 
   async function save(status?: string) {
-    await fetch(`/api/leads/${params.id}`, {
+    const body: { comment: string; status?: string; rejectReason?: string } = { comment, status };
+    if (status === "rejected") body.rejectReason = rejectReason.trim();
+    const res = await fetch(`/api/leads/${params.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ comment, status }),
+      body: JSON.stringify(body),
     });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setRejectErr(d.error || "Ошибка");
+      return;
+    }
+    setRejectErr("");
     await load();
   }
 
@@ -98,6 +111,7 @@ export default function LeadPage() {
         consentAt={lead.contact.consentAt}
       />
       <LeadTags leadId={lead.id} initial={lead.tags} />
+      <FollowUps leadId={lead.id} initial={lead.followUps} />
       <InternalNotes leadId={lead.id} conversationId={lead.conversation?.id} />
       <ActivityTimeline items={lead.timeline || []} />
       <textarea className="mt-6 w-full max-w-xl rounded-2xl border border-line bg-slot p-3" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} />
@@ -114,10 +128,25 @@ export default function LeadPage() {
         <button onClick={() => save("qualified")} className="rounded-xl border px-4 py-2">
           Квалифицирован
         </button>
-        <button onClick={() => save("rejected")} className="rounded-xl border px-4 py-2">
-          Отказ
-        </button>
       </div>
+      {lead.status !== "rejected" && (
+        <div className="mt-3 max-w-xl space-y-2">
+          <input
+            className="w-full rounded-xl border border-line bg-slot px-3 py-2 text-sm"
+            placeholder="Причина отказа"
+            value={rejectReason}
+            onChange={(e) => setRejectReason(e.target.value)}
+            maxLength={280}
+          />
+          <button onClick={() => save("rejected")} className="rounded-xl border px-4 py-2">
+            Отказ
+          </button>
+          {rejectErr && <p className="text-sm text-urgent">{rejectErr}</p>}
+        </div>
+      )}
+      {lead.status === "rejected" && lead.rejectReason && (
+        <p className="mt-3 text-sm text-muted">Причина отказа: {lead.rejectReason}</p>
+      )}
     </main>
   );
 }

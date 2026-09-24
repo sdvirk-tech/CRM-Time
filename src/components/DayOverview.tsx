@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { OverdueList } from "@/components/FollowUps";
 
 export type DayStats = {
   unread: number;
@@ -14,6 +15,14 @@ export type DayStats = {
   conversion?: number;
   taken?: number;
   managers?: { userId?: string; name: string; taken: number; qualified: number; conversion: number; assigned: number }[];
+  overdue?: {
+    id: string;
+    title: string;
+    dueAt: string;
+    leadId: string;
+    contactName?: string;
+    assignee?: { name: string } | null;
+  }[];
   role?: string;
 };
 
@@ -74,6 +83,7 @@ export function DayOverview({ stats, onSla }: { stats: DayStats | null; onSla?: 
             .join(" · ") || "пока без взятых"}
         </p>
       )}
+      <OverdueList items={stats.overdue} />
       {owner && (
         <form onSubmit={saveSla} className="mt-3 flex flex-wrap items-end gap-2 text-sm">
           <label>

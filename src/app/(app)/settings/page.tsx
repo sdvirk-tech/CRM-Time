@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { CannedManager } from "@/components/CannedManager";
 
 type Model = { provider: string; model: string; label: string; available: boolean };
+type ImportErr = { row: number; error: string };
 
 export default function SettingsPage() {
   const [role, setRole] = useState("");
@@ -14,6 +15,13 @@ export default function SettingsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [box, setBox] = useState(false);
   const [msg, setMsg] = useState("");
+  const [hookUrl, setHookUrl] = useState("");
+  const [hookSecret, setHookSecret] = useState("");
+  const [hookHasSecret, setHookHasSecret] = useState(false);
+  const [hookLast, setHookLast] = useState("");
+  const [csvText, setCsvText] = useState("имя,телефон,телеграм,макс\n");
+  const [importMsg, setImportMsg] = useState("");
+  const [importErrors, setImportErrors] = useState<ImportErr[]>([]);
 
   async function load() {
     const [ws, me] = await Promise.all([fetch("/api/workspace").then((r) => r.json()), fetch("/api/auth/me").then((r) => r.json())]);
@@ -24,6 +32,9 @@ export default function SettingsPage() {
     setModels(ws.models || []);
     setBox(Boolean(ws.dataOnThisMachine) || me.deployMode === "box");
     setRole(me.user?.role || "");
+    setHookUrl(ws.outboundWebhookUrl || "");
+    setHookHasSecret(Boolean(ws.outboundWebhookHasSecret));
+    setHookLast(ws.outboundWebhookLastError || "");
   }
 
   useEffect(() => {
@@ -40,11 +51,37 @@ export default function SettingsPage() {
         pingEnabled,
         routingMode,
         defaultModel: defaultModel || null,
+        outboundWebhookUrl: hookUrl,
+        outboundWebhookSecret: hookSecret || undefined,
       }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) setMsg(data.error || "Ошибка");
-    else setMsg("Сохранили");
+    else {
+      setMsg("Сохранили");
+      setHookSecret("");
+      await load();
+    }
+  }
+
+  async function runImport(dryRun: boolean) {
+    const res = await fetch("/api/contacts/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ csv: csvText, dryRun }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setImportMsg(d.error || "Ошибка");
+      setImportErrors([]);
+      return;
+    }
+    setImportErrors(d.errors || []);
+    setImportMsg(
+      dryRun
+        ? `Проверка: +${d.created} / обновить ${d.updated} / пропуск ${d.skipped} / ошибок ${d.errors?.length || 0}`
+        : `Импорт: +${d.created} / обновлено ${d.updated} / пропуск ${d.skipped} / ошибок ${d.errors?.length || 0}`,
+    );
   }
 
   const owner = role === "owner";
@@ -117,10 +154,71 @@ export default function SettingsPage() {
           </select>
         </label>
         {owner && (
+          <>
+            <h2 className="text-xl font-semibold">Webhook лида «Новый»</h2>
+            <p className="text-sm text-muted">
+              HTTPS POST на ваш URL, заголовок X-CRM-Time-Secret. Не Bitrix и не Amo — сырой JSON события.
+            </p>
+            <label className="block text-sm">
+              URL
+              <input
+                className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
+                value={hookUrl}
+                onChange={(e) => setHookUrl(e.target.value)}
+                placeholder="https://…"
+              />
+            </label>
+            <label className="block text-sm">
+              Секрет {hookHasSecret ? "(уже задан, пустое поле не меняет)" : ""}
+              <input
+                className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
+                value={hookSecret}
+                onChange={(e) => setHookSecret(e.target.value)}
+                placeholder="секрет в заголовке"
+              />
+            </label>
+            {hookLast && <p className="text-sm text-urgent">Последняя ошибка: {hookLast}</p>}
+          </>
+        )}
+        {owner && (
           <button className="rounded-xl bg-accent px-4 py-2 text-ink">Сохранить</button>
         )}
         {msg && <p className="ok-banner rounded px-3 py-2 text-sm">{msg}</p>}
       </form>
+      <section className="mt-12 max-w-xl">
+        <h2 className="text-xl font-semibold">Импорт контактов CSV</h2>
+        <p className="mt-1 text-sm text-muted">
+          Колонки: имя, телефон, телеграм, макс. Проверка без записи, затем импорт. Существующие не стираем — обновляем по телефону.
+        </p>
+        <textarea
+          className="mt-3 w-full rounded-xl border border-line bg-slot p-3 text-sm"
+          rows={6}
+          value={csvText}
+          onChange={(e) => setCsvText(e.target.value)}
+        />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-xl border border-line px-4 py-2 text-sm"
+            onClick={() => runImport(true)}
+          >
+            Проверить
+          </button>
+          <button type="button" className="rounded-xl bg-accent px-4 py-2 text-sm text-ink" onClick={() => runImport(false)}>
+            Импортировать
+          </button>
+        </div>
+        {importMsg && <p className="ok-banner mt-2 rounded px-3 py-2 text-sm">{importMsg}</p>}
+        {importErrors.length > 0 && (
+          <ul className="mt-2 space-y-1 text-sm text-urgent">
+            {importErrors.map((e, i) => (
+              <li key={`${e.row}-${i}`}>
+                Строка {e.row}: {e.error}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
       <CannedManager />
     </main>
   );

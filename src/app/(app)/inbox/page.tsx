@@ -7,6 +7,7 @@ import { DayOverview, DayStats } from "@/components/DayOverview";
 type Item = {
   id: string;
   unread: boolean;
+  pinned?: boolean;
   urgent: boolean;
   stale?: boolean;
   urgentReason: string | null;
@@ -79,10 +80,11 @@ export default function InboxPage() {
       <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-accent bg-paper">
         {visible.length === 0 && <li className="p-6 text-muted">Нет заявок в этом фильтре.</li>}
         {visible.map((item) => (
-          <li key={item.id}>
-            <Link href={`/inbox/${item.id}`} className="flex items-start justify-between gap-4 p-4 hover:bg-mist">
+          <li key={item.id} className="flex items-stretch">
+            <Link href={`/inbox/${item.id}`} className="flex flex-1 items-start justify-between gap-4 p-4 hover:bg-mist">
               <div>
                 <p className="font-medium">
+                  {item.pinned && <span className="mr-2 text-xs font-semibold">закреплено</span>}
                   {item.contact.name}
                   {item.unread && <span className="ml-2 text-xs font-semibold">новое</span>}
                 </p>
@@ -108,6 +110,20 @@ export default function InboxPage() {
                 {item.cardReady && <span className="rounded bg-ok px-2 py-0.5 text-xs">карточка</span>}
               </div>
             </Link>
+            <button
+              type="button"
+              className="shrink-0 border-l border-line px-3 text-xs hover:bg-mist"
+              onClick={async () => {
+                await fetch(`/api/conversations/${item.id}`, {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: item.pinned ? "unpin" : "pin" }),
+                });
+                await load();
+              }}
+            >
+              {item.pinned ? "Открепить" : "Закрепить"}
+            </button>
           </li>
         ))}
       </ul>

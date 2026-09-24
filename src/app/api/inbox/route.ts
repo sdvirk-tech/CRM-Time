@@ -10,7 +10,7 @@ export async function GET() {
       (await prisma.workspace.findUnique({ where: { id: session.workspaceId } }))?.slaMinutes ?? 15;
     const items = await prisma.conversation.findMany({
       where: { workspaceId: session.workspaceId },
-      orderBy: [{ urgent: "desc" }, { updatedAt: "desc" }],
+      orderBy: [{ pinned: "desc" }, { urgent: "desc" }, { updatedAt: "desc" }],
       include: {
         contact: true,
         channel: true,
@@ -32,6 +32,7 @@ export async function GET() {
         status: i.status,
         assigneeId: i.assigneeId,
         unread: i.unread,
+        pinned: i.pinned,
         urgent: i.urgent,
         urgentReason: i.urgentReason,
         stale,

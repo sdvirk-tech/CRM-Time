@@ -39,5 +39,9 @@ export function activityLabel(event: string) {
   if (event === "tag") return "метка";
   if (event === "take") return "взяли";
   if (event === "close") return "закрыли";
+  if (event === "webhook") return "webhook";
+  if (event === "task") return "задача";
+  if (event === "pin") return "закрепили";
+  if (event === "import") return "импорт";
   return event;
 }

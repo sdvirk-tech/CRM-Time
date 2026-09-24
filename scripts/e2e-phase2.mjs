@@ -4,11 +4,13 @@
  * почта, несколько линейных цепочек, curl модели, CSV;
  * воронка/KPI, RAG-lite, PDF, DLP, 152-ФЗ, курс ЦБ, статусы, галерея, IMAP;
  * поиск, колокольчик, настройки, склейка контактов, коробка;
- * метки, внутренние заметки, шаблоны, лента.
+ * метки, внутренние заметки, шаблоны, лента;
+ * задачи, закрепление, CSV-импорт, исходящий webhook, причина отказа.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import http from "node:http";
 
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -763,6 +765,120 @@ async function main() {
   const contactCardTl = await req(`/api/contacts/${form1.data.contactId}`, { cookie });
   assert((contactCardTl.data.timeline || []).some((i) => i.event === "consent" || i.event === "message"), "contact card timeline");
 
+  const noReason = await req(`/api/leads/${form1.data.leadId}`, { method: "PATCH", cookie, json: { status: "rejected" } });
+  assert(noReason.status === 400, "reject without reason 400");
+  const withReason = await req(`/api/leads/${form1.data.leadId}`, {
+    method: "PATCH",
+    cookie,
+    json: { status: "rejected", rejectReason: "дорого" },
+  });
+  assert(withReason.status === 200 && withReason.data.status === "rejected", "reject with reason");
+  assert(withReason.data.rejectReason === "дорого", "rejectReason stored");
+  const backNew = await req(`/api/leads/${form1.data.leadId}`, { method: "PATCH", cookie, json: { status: "in_progress" } });
+  assert(backNew.status === 200, "lead back after reject");
+
+  const team = await req("/api/team", { cookie });
+  const ownerId = (team.data.members || []).find((m) => m.role === "owner")?.userId;
+  assert(ownerId, "owner member for task");
+  const past = new Date(Date.now() - 3600_000).toISOString();
+  const task = await req("/api/tasks", {
+    method: "POST",
+    cookie,
+    json: { leadId: form1.data.leadId, title: "Перезвонить", dueAt: past, assigneeId: ownerId },
+  });
+  assert(task.status === 200 && task.data.item?.overdue === true, "task overdue " + JSON.stringify(task.data));
+  const overdue = await req("/api/tasks?overdue=1", { cookie });
+  assert((overdue.data.items || []).some((t) => t.id === task.data.item.id), "overdue list");
+  const statsOverdue = await req("/api/stats", { cookie });
+  assert((statsOverdue.data.overdue || []).some((t) => t.title === "Перезвонить"), "overdue on overview");
+  const leadTasks = await req(`/api/leads/${form1.data.leadId}`, { cookie });
+  assert((leadTasks.data.followUps || []).some((t) => t.title === "Перезвонить" && t.assigneeId === ownerId), "tasks on lead card");
+  const doneTask = await req(`/api/tasks/${task.data.item.id}`, { method: "PATCH", cookie, json: { done: true } });
+  assert(doneTask.status === 200 && doneTask.data.item.doneAt, "task done");
+  const overdueAfter = await req("/api/tasks?overdue=1", { cookie });
+  assert(!(overdueAfter.data.items || []).some((t) => t.id === task.data.item.id), "done not overdue");
+
+  const convId = form1.data.conversationId;
+  assert(convId, "conversation for pin");
+  const pin = await req(`/api/conversations/${convId}`, { method: "PATCH", cookie, json: { action: "pin" } });
+  assert(pin.status === 200 && pin.data.conversation.pinned === true, "pin conversation");
+  const inboxPinned = await req("/api/inbox", { cookie });
+  assert(inboxPinned.data.items[0]?.id === convId, "pinned first in inbox");
+  assert(inboxPinned.data.items[0]?.pinned === true, "inbox pinned flag");
+  const unpin = await req(`/api/conversations/${convId}`, { method: "PATCH", cookie, json: { action: "unpin" } });
+  assert(unpin.status === 200 && unpin.data.conversation.pinned === false, "unpin");
+
+  const keepContact = await req(`/api/contacts/${form1.data.contactId}`, { cookie });
+  assert(keepContact.status === 200 && keepContact.data.name === "Клиент RR1", "contact before import");
+  const badCsv = "имя,телефон,телеграм,макс\n,7900notaphone,@tg,max1\nОк,abc,@x,y\n";
+  const dryBad = await req("/api/contacts/import", { method: "POST", cookie, json: { csv: badCsv, dryRun: true } });
+  assert(dryBad.status === 200 && dryBad.data.dryRun === true, "csv dry-run");
+  assert((dryBad.data.errors || []).length >= 1, "csv dry-run errors");
+  const stillThere = await req(`/api/contacts/${form1.data.contactId}`, { cookie });
+  assert(stillThere.status === 200 && stillThere.data.id === form1.data.contactId, "dry-run no wipe");
+
+  const importPhone = phone();
+  const csvOk = `имя,телефон,телеграм,макс\nИмпорт CSV,+${importPhone},@impmax,maximp\nКлиент RR1,+${phone1},@rr1,maxrr1\n`;
+  const dryOk = await req("/api/contacts/import", { method: "POST", cookie, json: { csv: csvOk, dryRun: true } });
+  assert(dryOk.status === 200 && dryOk.data.errors.length === 0, "csv dry-run clean");
+  assert(dryOk.data.created >= 1 && dryOk.data.updated >= 1, "csv dry-run counts");
+  const applied = await req("/api/contacts/import", { method: "POST", cookie, json: { csv: csvOk, dryRun: false } });
+  assert(applied.status === 200 && applied.data.dryRun === false, "csv apply");
+  assert(applied.data.created >= 1 && applied.data.updated >= 1, "csv upsert");
+  const keptAfter = await req(`/api/contacts/${form1.data.contactId}`, { cookie });
+  assert(keptAfter.status === 200 && keptAfter.data.id === form1.data.contactId, "import no wipe");
+  assert(keptAfter.data.name === "Клиент RR1", "existing contact kept");
+  const foundImp = await req(`/api/search?q=${encodeURIComponent("Импорт CSV")}`, { cookie });
+  assert((foundImp.data.contacts || []).some((c) => c.title === "Импорт CSV"), "imported contact searchable");
+
+  const badUrl = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { outboundWebhookUrl: "http://example.com/hook" },
+  });
+  assert(badUrl.status === 400, "http webhook rejected unless localhost");
+
+  const hookHits = [];
+  const hookServer = http.createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => {
+      body += c;
+    });
+    req.on("end", () => {
+      hookHits.push({ secret: req.headers["x-crm-time-secret"], body });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    });
+  });
+  await new Promise((resolve) => hookServer.listen(0, "127.0.0.1", resolve));
+  const hookPort = hookServer.address().port;
+  const hookSecret = "phase8-secret-" + id;
+  const hookSet = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { outboundWebhookUrl: `http://127.0.0.1:${hookPort}/lead`, outboundWebhookSecret: hookSecret },
+  });
+  assert(hookSet.status === 200 && hookSet.data.outboundWebhookUrl.includes("127.0.0.1"), "webhook url saved");
+  assert(hookSet.data.outboundWebhookHasSecret === true, "webhook secret stored");
+  assert(!hookSet.data.outboundWebhookSecretEnc, "secret not leaked");
+  const wsHook = await req("/api/workspace", { cookie });
+  assert(wsHook.data.outboundWebhookHasSecret === true, "hasSecret on get");
+  assert(!wsHook.data.outboundWebhookSecretEnc, "secret not on get");
+
+  const hookPhone = phone();
+  const hookLead = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Хук Новый", phone: hookPhone },
+  });
+  assert(hookLead.status === 200 && hookLead.data.leadId, "webhook source lead");
+  assert(hookHits.length >= 1, "webhook fired");
+  const hit = hookHits[hookHits.length - 1];
+  assert(hit.secret === hookSecret, "webhook secret header");
+  const payload = JSON.parse(hit.body);
+  assert(payload.event === "lead.new" && payload.status === "new", "webhook payload");
+  assert(payload.leadId === hookLead.data.leadId, "webhook leadId");
+  hookServer.close();
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -773,6 +889,7 @@ async function main() {
     phase5: "152+cbr+status+photos+imap",
     phase6: "search+bell+settings+merge+box",
     phase7: "tags+notes+canned+timeline",
+    phase8: "tasks+pin+csv+webhook+reject",
   });
 }
 

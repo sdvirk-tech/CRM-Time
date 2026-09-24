@@ -11,6 +11,7 @@ import { getCbrRates } from "@/lib/cbr";
 import { extractPhotoRefs } from "@/lib/photos";
 import { logActivity, listTimeline } from "@/lib/activity";
 import { activityLabel } from "@/lib/labels";
+import { mapTask } from "@/lib/tasks";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -78,9 +79,19 @@ export async function GET(req: Request, ctx: Ctx) {
       });
     }
     const timelineRaw = await listTimeline({ workspaceId: session.workspaceId, leadId: lead.id });
+    const followUps = await prisma.followUp.findMany({
+      where: { workspaceId: session.workspaceId, leadId: lead.id },
+      orderBy: [{ doneAt: "asc" }, { dueAt: "asc" }],
+      include: {
+        assignee: { select: { id: true, name: true } },
+        lead: { include: { contact: { select: { name: true } } } },
+      },
+    });
     const mask = shouldMask(session.role);
     return NextResponse.json({
       ...dlpLead(session.role, lead),
+      rejectReason: lead.rejectReason,
+      followUps: followUps.map(mapTask),
       tags: lead.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
       timeline: timelineRaw.map((i) => ({
         id: i.id,
@@ -106,16 +117,27 @@ export async function PATCH(req: Request, ctx: Ctx) {
         status: z.enum(["new", "in_progress", "qualified", "rejected"]).optional(),
         comment: z.string().optional(),
         urgent: z.boolean().optional(),
+        rejectReason: z.string().optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");
     const existing = await prisma.lead.findFirst({ where: { id, workspaceId: session.workspaceId } });
     if (!existing) return jsonError("Лид не найден", 404);
+    const reason = (parsed.data.rejectReason || "").trim();
+    if (parsed.data.status === "rejected") {
+      if (reason.length < 2 || reason.length > 280) return jsonError("Нужна причина отказа");
+    }
     const lead = await prisma.lead.update({
       where: { id },
-      data: parsed.data,
+      data: {
+        ...(parsed.data.status !== undefined ? { status: parsed.data.status } : {}),
+        ...(parsed.data.comment !== undefined ? { comment: parsed.data.comment } : {}),
+        ...(parsed.data.urgent !== undefined ? { urgent: parsed.data.urgent } : {}),
+        ...(parsed.data.status === "rejected" ? { rejectReason: reason } : {}),
+      },
     });
     if (parsed.data.status && parsed.data.status !== existing.status) {
+      const extra = parsed.data.status === "rejected" ? ` · ${reason}` : "";
       await logActivity({
         workspaceId: session.workspaceId,
         leadId: lead.id,
@@ -123,7 +145,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         conversationId: existing.conversationId,
         actor: session.name,
         event: "status",
-        message: `${leadStatusLabel(existing.status)} → ${leadStatusLabel(lead.status)}`,
+        message: `${leadStatusLabel(existing.status)} → ${leadStatusLabel(lead.status)}${extra}`,
       });
     }
     return NextResponse.json(lead);
