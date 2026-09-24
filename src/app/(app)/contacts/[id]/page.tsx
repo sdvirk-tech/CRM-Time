@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CargoCard } from "@/components/CargoCard";
 import { MergeDuplicates } from "@/components/MergeDuplicates";
+import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { channelLabel, leadStatusLabel } from "@/lib/labels";
 
 type Msg = { direction: string; body: string };
@@ -33,6 +34,7 @@ export default function ContactPage() {
     fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
     photos?: { href: string; kind: string; label: string }[];
     duplicates?: { id: string; name: string; phone: string | null; telegram: string | null; reason: string }[];
+    timeline?: { id: string; event: string; label: string; actor: string; message: string; createdAt: string }[];
   };
 
   return (
@@ -71,6 +73,7 @@ export default function ContactPage() {
         consentAt={contact.consentAt}
       />
       <MergeDuplicates items={contact.duplicates || []} />
+      <ActivityTimeline items={contact.timeline || []} />
       <section className="mt-8">
         <h2 className="text-xl font-semibold">Лиды</h2>
         <ul className="mt-2 space-y-1">

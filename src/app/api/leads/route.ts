@@ -7,16 +7,27 @@ import { dlpLead, maskPii, maskPhoneIf, shouldMask } from "@/lib/dlp";
 
 export async function GET(req: Request) {
   return withSession(async (session) => {
+    const tagQ = new URL(req.url).searchParams.get("tag")?.trim() || "";
     const fields = await prisma.customField.findMany({
       where: { workspaceId: session.workspaceId },
       orderBy: { createdAt: "asc" },
     });
+    const tagFilter = tagQ
+      ? {
+          tags: {
+            some: {
+              OR: [{ tagId: tagQ }, { tag: { name: { equals: tagQ, mode: "insensitive" as const } } }],
+            },
+          },
+        }
+      : {};
     const leads = await prisma.lead.findMany({
-      where: { workspaceId: session.workspaceId },
+      where: { workspaceId: session.workspaceId, ...tagFilter },
       orderBy: [{ urgent: "desc" }, { createdAt: "desc" }],
       include: {
         contact: { include: { fieldValues: { include: { field: true } } } },
         assignee: true,
+        tags: { include: { tag: true } },
       },
     });
     const newCount = leads.filter((l) => l.status === "new").length;
@@ -71,6 +82,7 @@ export async function GET(req: Request) {
         createdAt: l.createdAt,
         contact: { id: l.contact.id, name: l.contact.name, phone: l.contact.phone },
         assignee: l.assignee ? { id: l.assignee.id, name: l.assignee.name } : null,
+        tags: l.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
       })),
     });
   });

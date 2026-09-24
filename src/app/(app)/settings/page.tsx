@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { CannedManager } from "@/components/CannedManager";
 
 type Model = { provider: string; model: string; label: string; available: boolean };
 
@@ -120,6 +120,7 @@ export default function SettingsPage() {
         )}
         {msg && <p className="ok-banner rounded px-3 py-2 text-sm">{msg}</p>}
       </form>
+      <CannedManager />
     </main>
   );
 }

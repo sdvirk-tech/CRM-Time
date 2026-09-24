@@ -20,6 +20,7 @@ model User {
   assignedLeads Lead[]           @relation("LeadAssignee")
   assignedConversations Conversation[] @relation("ConversationAssignee")
   notifications Notification[]
+  internalNotes InternalNote[]
   @@map("users")
 }
 
@@ -55,6 +56,10 @@ model Workspace {
   channelEvents    ChannelEvent[]
   activityEvents   ActivityEvent[]
   notifications    Notification[]
+  tags             Tag[]
+  leadTags         LeadTag[]
+  internalNotes    InternalNote[]
+  cannedReplies    CannedReply[]
   @@map("workspaces")
 }
 
@@ -167,6 +172,8 @@ model Contact {
   conversations Conversation[]
   leads       Lead[]
   fieldValues FieldValue[]
+  internalNotes InternalNote[]
+  activityEvents ActivityEvent[]
   @@index([workspaceId])
   @@index([workspaceId, phone])
   @@map("contacts")
@@ -212,6 +219,7 @@ model Conversation {
   messages    Message[]
   leads       Lead[]
   activity    ActivityEvent[]
+  internalNotes InternalNote[]
   @@index([workspaceId])
   @@index([workspaceId, unread])
   @@map("conversations")
@@ -251,6 +259,9 @@ model Lead {
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   assignee       User?        @relation("LeadAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   fieldValues    FieldValue[]
+  tags           LeadTag[]
+  internalNotes  InternalNote[]
+  activityEvents ActivityEvent[]
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@map("leads")
@@ -326,14 +337,78 @@ model ActivityEvent {
   workspaceId    String        @map("workspace_id")
   conversationId String?       @map("conversation_id")
   channelId      String?       @map("channel_id")
+  contactId      String?       @map("contact_id")
+  leadId         String?       @map("lead_id")
   actor          String
   event          String
   message        String
   createdAt      DateTime      @default(now()) @map("created_at")
   workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
   @@index([workspaceId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([leadId, createdAt])
   @@map("activity_events")
+}
+
+model Tag {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  name        String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leads       LeadTag[]
+  @@unique([workspaceId, name])
+  @@index([workspaceId])
+  @@map("tags")
+}
+
+model LeadTag {
+  workspaceId String    @map("workspace_id")
+  leadId      String    @map("lead_id")
+  tagId       String    @map("tag_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  @@id([leadId, tagId])
+  @@index([workspaceId])
+  @@index([tagId])
+  @@map("lead_tags")
+}
+
+model InternalNote {
+  id             String        @id @default(cuid())
+  workspaceId    String        @map("workspace_id")
+  leadId         String?       @map("lead_id")
+  conversationId String?       @map("conversation_id")
+  contactId      String?       @map("contact_id")
+  authorId       String        @map("author_id")
+  body           String
+  createdAt      DateTime      @default(now()) @map("created_at")
+  workspace      Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  author         User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt])
+  @@index([leadId])
+  @@index([conversationId])
+  @@map("internal_notes")
+}
+
+model CannedReply {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  title       String
+  body        String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId])
+  @@map("canned_replies")
 }
 
 model ChannelEvent {

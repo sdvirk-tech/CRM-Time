@@ -33,7 +33,9 @@ export async function GET(_req: Request, ctx: Ctx) {
     return NextResponse.json({
       ...conv,
       contact: dlpContact(session.role, conv.contact),
-      messages: conv.messages.map((m) => ({ ...m, body: dlpMessageBody(session.role, m.body) })),
+      messages: conv.messages
+        .filter((m) => m.direction !== "internal" && m.direction !== "note")
+        .map((m) => ({ ...m, body: dlpMessageBody(session.role, m.body) })),
       operators: members.map((m) => ({ userId: m.userId, name: m.user.name, role: m.role })),
       fx: await getCbrRates(),
       photos: extractPhotoRefs(
@@ -86,7 +88,7 @@ export async function POST(req: Request, ctx: Ctx) {
         workspaceId: session.workspaceId,
         conversationId: id,
         actor: session.name,
-        event: "reply",
+        event: "send",
         message: body.slice(0, 160),
       });
       return NextResponse.json({ message: msg, sent: true });

@@ -28,3 +28,16 @@ export function urgentReasonLabel(reason: string | null | undefined) {
   if (reason === "silent_client") return "клиент молчит — пинг";
   return "";
 }
+
+export function activityLabel(event: string) {
+  if (event === "message" || event === "ingest") return "сообщение";
+  if (event === "send" || event === "reply") return "отправка";
+  if (event === "status") return "статус";
+  if (event === "merge") return "склейка";
+  if (event === "consent") return "согласие";
+  if (event === "note") return "внутренняя заметка";
+  if (event === "tag") return "метка";
+  if (event === "take") return "взяли";
+  if (event === "close") return "закрыли";
+  return event;
+}

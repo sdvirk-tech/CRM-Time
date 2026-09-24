@@ -9,6 +9,8 @@ import { cargoCardPdf } from "@/lib/pdf";
 import { dlpLead, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
 import { getCbrRates } from "@/lib/cbr";
 import { extractPhotoRefs } from "@/lib/photos";
+import { logActivity, listTimeline } from "@/lib/activity";
+import { activityLabel } from "@/lib/labels";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -22,6 +24,7 @@ export async function GET(req: Request, ctx: Ctx) {
         assignee: true,
         conversation: true,
         fieldValues: { include: { field: true } },
+        tags: { include: { tag: true } },
       },
     });
     if (!lead) return jsonError("Лид не найден", 404);
@@ -74,8 +77,19 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
+    const timelineRaw = await listTimeline({ workspaceId: session.workspaceId, leadId: lead.id });
+    const mask = shouldMask(session.role);
     return NextResponse.json({
       ...dlpLead(session.role, lead),
+      tags: lead.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
+      timeline: timelineRaw.map((i) => ({
+        id: i.id,
+        event: i.event,
+        label: activityLabel(i.event),
+        actor: i.actor,
+        message: mask ? maskPii(i.message) : i.message,
+        createdAt: i.createdAt,
+      })),
       fx: await getCbrRates(),
       photos: extractPhotoRefs(
         [lead.comment, ...values.map((v) => v.value)].join("\n"),
@@ -101,6 +115,17 @@ export async function PATCH(req: Request, ctx: Ctx) {
       where: { id },
       data: parsed.data,
     });
+    if (parsed.data.status && parsed.data.status !== existing.status) {
+      await logActivity({
+        workspaceId: session.workspaceId,
+        leadId: lead.id,
+        contactId: existing.contactId,
+        conversationId: existing.conversationId,
+        actor: session.name,
+        event: "status",
+        message: `${leadStatusLabel(existing.status)} → ${leadStatusLabel(lead.status)}`,
+      });
+    }
     return NextResponse.json(lead);
   });
 }

@@ -6,6 +6,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { channelLabel, leadStatusLabel, urgentReasonLabel } from "@/lib/labels";
 import { CargoCard } from "@/components/CargoCard";
 import { LeadQuickStatus } from "@/components/LeadQuickStatus";
+import { CannedPicker } from "@/components/CannedPicker";
+import { InternalNotes } from "@/components/InternalNotes";
 
 type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
 type Operator = { userId: string; name: string; role: string };
@@ -179,6 +181,9 @@ export default function ConversationPage() {
           ))}
         </ol>
         <form className="mt-8 space-y-3">
+          <CannedPicker
+            onInsert={(body) => setText((prev) => (prev.trim() ? `${prev.trim()}\n${body}` : body))}
+          />
           <textarea className="w-full rounded-2xl border border-line bg-slot p-3" rows={4} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ответ клиенту…" />
           <div className="flex flex-wrap gap-2">
             <button onClick={(e) => send(e, false)} className="rounded-xl border border-line px-4 py-2">
@@ -200,6 +205,7 @@ export default function ConversationPage() {
             </p>
           )}
         </form>
+        <InternalNotes conversationId={data.id} leadId={leadId} />
       </section>
       <aside className="border-t border-line bg-mist p-6 lg:border-l lg:border-t-0">
         <p className="text-xs uppercase tracking-widest text-muted">Контакт</p>

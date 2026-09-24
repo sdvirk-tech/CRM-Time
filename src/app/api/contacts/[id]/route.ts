@@ -11,6 +11,8 @@ import { dlpContact, maskEmailIf, maskPhoneIf, maskPii, shouldMask } from "@/lib
 import { getCbrRates } from "@/lib/cbr";
 import { findDuplicateContacts } from "@/lib/contacts";
 import { extractPhotoRefs } from "@/lib/photos";
+import { listTimeline } from "@/lib/activity";
+import { activityLabel } from "@/lib/labels";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -97,6 +99,8 @@ export async function GET(req: Request, ctx: Ctx) {
     } catch {
       duplicates = [];
     }
+    const timelineRaw = await listTimeline({ workspaceId: session.workspaceId, contactId: contact.id });
+    const mask = shouldMask(session.role);
     return NextResponse.json({
       ...dlpContact(session.role, contact),
       fx: await getCbrRates(),
@@ -108,6 +112,14 @@ export async function GET(req: Request, ctx: Ctx) {
         ].join("\n"),
       ),
       duplicates,
+      timeline: timelineRaw.map((i) => ({
+        id: i.id,
+        event: i.event,
+        label: activityLabel(i.event),
+        actor: i.actor,
+        message: mask ? maskPii(i.message) : i.message,
+        createdAt: i.createdAt,
+      })),
     });
   });
 }

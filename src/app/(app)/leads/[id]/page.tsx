@@ -5,6 +5,9 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { leadStatusLabel, sourceLabel } from "@/lib/labels";
 import { CargoCard } from "@/components/CargoCard";
+import { LeadTags } from "@/components/LeadTags";
+import { InternalNotes } from "@/components/InternalNotes";
+import { ActivityTimeline } from "@/components/ActivityTimeline";
 
 export default function LeadPage() {
   const params = useParams<{ id: string }>();
@@ -20,6 +23,8 @@ export default function LeadPage() {
     fieldValues?: { value: string; field: { key: string; name: string } }[];
     fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
     photos?: { href: string; kind: string; label: string }[];
+    tags?: { id: string; name: string }[];
+    timeline?: { id: string; event: string; label: string; actor: string; message: string; createdAt: string }[];
   } | null>(null);
   const [comment, setComment] = useState("");
 
@@ -92,6 +97,9 @@ export default function LeadPage() {
         onStatus={load}
         consentAt={lead.contact.consentAt}
       />
+      <LeadTags leadId={lead.id} initial={lead.tags} />
+      <InternalNotes leadId={lead.id} conversationId={lead.conversation?.id} />
+      <ActivityTimeline items={lead.timeline || []} />
       <textarea className="mt-6 w-full max-w-xl rounded-2xl border border-line bg-slot p-3" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} />
       <div className="mt-4 flex flex-wrap gap-2">
         <button onClick={() => save()} className="rounded-xl border border-line px-4 py-2">

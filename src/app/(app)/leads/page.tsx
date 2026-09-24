@@ -14,6 +14,7 @@ type Lead = {
   createdAt: string;
   contact: { id: string; name: string; phone: string | null };
   assignee: { id: string; name: string } | null;
+  tags?: { id: string; name: string }[];
 };
 
 const columns = [
@@ -27,12 +28,20 @@ export default function LeadsPage() {
   const [items, setItems] = useState<Lead[]>([]);
   const [newCount, setNewCount] = useState(0);
   const [stats, setStats] = useState<DayStats | null>(null);
+  const [tag, setTag] = useState("");
+  const [tags, setTags] = useState<{ id: string; name: string }[]>([]);
 
-  async function load() {
-    const [d, day] = await Promise.all([fetch("/api/leads").then((r) => r.json()), fetch("/api/stats").then((r) => r.json())]);
+  async function load(filter = tag) {
+    const q = filter ? `?tag=${encodeURIComponent(filter)}` : "";
+    const [d, day, t] = await Promise.all([
+      fetch("/api/leads" + q).then((r) => r.json()),
+      fetch("/api/stats").then((r) => r.json()),
+      fetch("/api/tags").then((r) => r.json()),
+    ]);
     setItems(d.items ?? []);
     setNewCount(d.newCount ?? 0);
     setStats(day);
+    setTags(t.items ?? []);
   }
 
   useEffect(() => {
@@ -48,6 +57,32 @@ export default function LeadsPage() {
     <main className="p-8">
       <h1 className="text-3xl font-semibold">Очередь лидов</h1>
       <p className="mt-2 text-muted">Новые: {newCount}</p>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted">Метка:</span>
+        <button
+          type="button"
+          className={`rounded-full px-3 py-1 ${!tag ? "bg-accent text-ink" : "bg-slot"}`}
+          onClick={() => {
+            setTag("");
+            load("");
+          }}
+        >
+          все
+        </button>
+        {tags.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className={`rounded-full px-3 py-1 ${tag === t.name ? "bg-accent text-ink" : "bg-slot"}`}
+            onClick={() => {
+              setTag(t.name);
+              load(t.name);
+            }}
+          >
+            {t.name}
+          </button>
+        ))}
+      </div>
       <a className="mt-3 inline-block rounded border border-accent bg-paper px-3 py-2 text-sm" href="/api/leads?format=csv">
         Скачать CSV
       </a>
@@ -71,6 +106,15 @@ export default function LeadsPage() {
                       {sourceLabel(l.source)}
                       {l.assignee ? ` · ${l.assignee.name}` : " · никто"}
                     </p>
+                    {l.tags && l.tags.length > 0 && (
+                      <p className="mt-1 flex flex-wrap gap-1">
+                        {l.tags.map((t) => (
+                          <span key={t.id} className="rounded-full bg-mist px-2 py-0.5 text-[11px]">
+                            {t.name}
+                          </span>
+                        ))}
+                      </p>
+                    )}
                     {col.key === "new" && (
                       <button onClick={() => claim(l.id)} className="mt-2 text-sm link">
                         Взять

@@ -3,7 +3,8 @@
  * Приёмка фазы 2–3: промт в UI, пинг после SLA, маршрутизация, опрос Telegram;
  * почта, несколько линейных цепочек, curl модели, CSV;
  * воронка/KPI, RAG-lite, PDF, DLP, 152-ФЗ, курс ЦБ, статусы, галерея, IMAP;
- * поиск, колокольчик, настройки, склейка контактов, коробка.
+ * поиск, колокольчик, настройки, склейка контактов, коробка;
+ * метки, внутренние заметки, шаблоны, лента.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
@@ -688,6 +689,80 @@ async function main() {
   const searchCargo = await req(`/api/search?q=${encodeURIComponent("модул")}`, { cookie });
   assert(searchCargo.status === 200, "search cargo text");
 
+  const tagName = "вэд-срочно";
+  const tagCreate = await req("/api/tags", { method: "POST", cookie, json: { name: tagName } });
+  assert(tagCreate.status === 200 && tagCreate.data.tag?.name === tagName, "create tag: " + JSON.stringify(tagCreate.data));
+  const tagged = await req(`/api/leads/${form1.data.leadId}/tags`, {
+    method: "POST",
+    cookie,
+    json: { name: tagName },
+  });
+  assert(tagged.status === 200 && (tagged.data.tags || []).some((t) => t.name === tagName), "attach tag");
+  const filtered = await req(`/api/leads?tag=${encodeURIComponent(tagName)}`, { cookie });
+  assert((filtered.data.items || []).some((l) => l.id === form1.data.leadId), "filter queue has tagged lead");
+  assert(
+    (filtered.data.items || []).every((l) => (l.tags || []).some((t) => t.name === tagName)),
+    "filter only tagged",
+  );
+  const untaggedLead = await req(`/api/leads/${form1.data.leadId}`, { cookie });
+  assert((untaggedLead.data.tags || []).some((t) => t.name === tagName), "lead card tags");
+
+  const noteBody = "внутренняя пометка не клиенту " + id;
+  const note = await req("/api/notes", {
+    method: "POST",
+    cookie,
+    json: { leadId: form1.data.leadId, conversationId: form1.data.conversationId, body: noteBody },
+  });
+  assert(note.status === 200 && note.data.note?.body === noteBody, "internal note: " + JSON.stringify(note.data));
+  const notesList = await req(`/api/notes?leadId=${form1.data.leadId}`, { cookie });
+  assert((notesList.data.items || []).some((n) => n.body === noteBody), "notes list");
+  const convForNote = form1.data.conversationId || untaggedLead.data.conversation?.id;
+  assert(convForNote, "conversation for note leak check");
+  const convGet = await req(`/api/conversations/${convForNote}`, { cookie });
+  assert(convGet.status === 200, "conversation after note");
+  assert(!(convGet.data.messages || []).some((m) => m.body === noteBody), "note not in client thread");
+  if (chatCh?.publicKey) {
+    const widget = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=p2-prompt-${id}`);
+    assert(!JSON.stringify(widget.data || {}).includes(noteBody), "note not in widget");
+  }
+
+  const cannedBody = "Добрый день, это шаблон менеджера.";
+  const canned = await req("/api/canned", {
+    method: "POST",
+    cookie,
+    json: { title: "привет", body: cannedBody },
+  });
+  assert(canned.status === 200 && canned.data.item?.body === cannedBody, "canned create");
+  const cannedList = await req("/api/canned", { cookie });
+  assert((cannedList.data.items || []).some((c) => c.title === "привет"), "canned list");
+  const draftCanned = await req(`/api/conversations/${convForNote}`, {
+    method: "POST",
+    cookie,
+    json: { text: cannedBody, send: false },
+  });
+  assert(draftCanned.status === 200 && draftCanned.data.sent === false, "canned into draft");
+  const convDraft = await req(`/api/conversations/${convForNote}`, { cookie });
+  assert((convDraft.data.messages || []).some((m) => m.direction === "draft" && m.body === cannedBody), "draft has canned");
+  const sentCanned = await req(`/api/conversations/${convForNote}`, {
+    method: "POST",
+    cookie,
+    json: { text: cannedBody, send: true },
+  });
+  assert(sentCanned.status === 200 && sentCanned.data.sent === true, "send canned");
+
+  const tlLead = await req(`/api/activity?leadId=${form1.data.leadId}`, { cookie });
+  assert(tlLead.status === 200, "timeline lead");
+  const leadEvents = (tlLead.data.items || []).map((i) => i.event);
+  assert(leadEvents.includes("consent") || leadEvents.includes("status") || leadEvents.includes("send") || leadEvents.includes("message"), "timeline has core events: " + leadEvents.join(","));
+  assert(leadEvents.includes("status"), "timeline status");
+  assert(leadEvents.includes("send"), "timeline send");
+  const leadCardTl = await req(`/api/leads/${form1.data.leadId}`, { cookie });
+  assert((leadCardTl.data.timeline || []).length >= 1, "lead card timeline");
+  const keptTl = await req(`/api/activity?contactId=${dupA.data.contactId}`, { cookie });
+  assert((keptTl.data.items || []).some((i) => i.event === "merge"), "timeline merge on kept contact");
+  const contactCardTl = await req(`/api/contacts/${form1.data.contactId}`, { cookie });
+  assert((contactCardTl.data.timeline || []).some((i) => i.event === "consent" || i.event === "message"), "contact card timeline");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -697,6 +772,7 @@ async function main() {
     phase4: "funnel+rag+pdf+dlp",
     phase5: "152+cbr+status+photos+imap",
     phase6: "search+bell+settings+merge+box",
+    phase7: "tags+notes+canned+timeline",
   });
 }
 

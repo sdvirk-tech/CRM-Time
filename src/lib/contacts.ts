@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { isGenericName } from "./sales";
 import { normalizePhone } from "./validators";
+import { logActivity } from "./activity";
 
 export type DuplicateHit = {
   id: string;
@@ -102,6 +103,14 @@ export async function mergeContacts(opts: { workspaceId: string; keepId: string;
     where: { workspaceId: opts.workspaceId, contactId: drop.id },
     data: { contactId: keep.id },
   });
+  await prisma.activityEvent.updateMany({
+    where: { workspaceId: opts.workspaceId, contactId: drop.id },
+    data: { contactId: keep.id },
+  });
+  await prisma.internalNote.updateMany({
+    where: { workspaceId: opts.workspaceId, contactId: drop.id },
+    data: { contactId: keep.id },
+  });
 
   const keepFields = new Set(keep.fieldValues.map((v) => v.fieldId));
   for (const fv of drop.fieldValues) {
@@ -144,6 +153,13 @@ export async function mergeContacts(opts: { workspaceId: string; keepId: string;
   }
 
   await prisma.contact.delete({ where: { id: drop.id } });
+  await logActivity({
+    workspaceId: opts.workspaceId,
+    contactId: keep.id,
+    actor: "система",
+    event: "merge",
+    message: `Склеили «${drop.name}» → «${keep.name}»`,
+  });
   return prisma.contact.findUniqueOrThrow({
     where: { id: keep.id },
     include: { channels: true, leads: true, conversations: true, fieldValues: { include: { field: true } } },

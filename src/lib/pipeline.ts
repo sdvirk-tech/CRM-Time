@@ -98,6 +98,7 @@ export async function findOrCreateContact(input: IngestInput) {
   });
   if (byExternal) {
     const contact = await prisma.contact.findUniqueOrThrow({ where: { id: byExternal.contactId } });
+    const hadConsent = Boolean(contact.consentAt);
     const patch: { phone?: string; name?: string; consentAt?: Date } = {};
     if (input.phone && !contact.phone) patch.phone = input.phone;
     if (input.name && contact.name === "Без имени") patch.name = input.name;
@@ -105,7 +106,17 @@ export async function findOrCreateContact(input: IngestInput) {
     if (Object.keys(patch).length) {
       await prisma.contact.update({ where: { id: contact.id }, data: patch });
     }
-    return prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
+    const fresh = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
+    if (!hadConsent && fresh.consentAt) {
+      await logActivity({
+        workspaceId: input.workspaceId,
+        contactId: fresh.id,
+        actor: "система",
+        event: "consent",
+        message: "Согласие 152-ФЗ",
+      });
+    }
+    return fresh;
   }
 
   if (input.phone) {
@@ -123,11 +134,21 @@ export async function findOrCreateContact(input: IngestInput) {
           username: input.username,
         },
       });
+      const hadConsent = Boolean(byPhone.consentAt);
       if (input.consentAt && !byPhone.consentAt) {
         await prisma.contact.update({ where: { id: byPhone.id }, data: { consentAt: input.consentAt } });
-        return prisma.contact.findUniqueOrThrow({ where: { id: byPhone.id } });
       }
-      return byPhone;
+      const fresh = await prisma.contact.findUniqueOrThrow({ where: { id: byPhone.id } });
+      if (!hadConsent && fresh.consentAt) {
+        await logActivity({
+          workspaceId: input.workspaceId,
+          contactId: fresh.id,
+          actor: "система",
+          event: "consent",
+          message: "Согласие 152-ФЗ",
+        });
+      }
+      return fresh;
     }
   }
 
@@ -150,6 +171,15 @@ export async function findOrCreateContact(input: IngestInput) {
       username: input.username,
     },
   });
+  if (contact.consentAt) {
+    await logActivity({
+      workspaceId: input.workspaceId,
+      contactId: contact.id,
+      actor: "система",
+      event: "consent",
+      message: "Согласие 152-ФЗ",
+    });
+  }
   return contact;
 }
 
@@ -320,8 +350,9 @@ export async function ingestInbound(input: IngestInput) {
     workspaceId: input.workspaceId,
     conversationId: conversation.id,
     channelId: input.channelId,
+    contactId: contact.id,
     actor: "система",
-    event: "ingest",
+    event: "message",
     message: `${input.source}: ${input.body.slice(0, 160)}`,
   });
 
