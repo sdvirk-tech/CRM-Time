@@ -1,3 +1,9 @@
+# Overlayfs: `docker compose build` / `up --build` can fail with "invalid argument".
+# Then start only Postgres and run the app locally:
+#   docker compose up db -d
+#   npm install && npx prisma migrate deploy && npm run dev
+# `docker compose config` still validates this file. Do not expect a green image build on overlayfs.
+
 services:
   db:
     image: postgres:16-alpine
@@ -17,11 +23,14 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       DATABASE_URL: postgresql://crm:crm@db:5432/crm
       APP_URL: ${APP_URL:-http://localhost:3000}

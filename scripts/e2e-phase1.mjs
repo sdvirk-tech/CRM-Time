@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * Приёмка фазы 1 по API (критерии ТЗ MVP).
+ * Приёмка фазы 1 по API (критерии ТЗ MVP, пункты 1–11).
  * Требует запущенный сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
+import { execSync } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const BASE = process.env.BASE_URL || "http://localhost:3000";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -39,16 +44,32 @@ function extraPublicRegisterAllowed(mode, userCount) {
   return mode !== "box" || userCount === 0;
 }
 
+function boxOnboardingAllowed(mode, workspaceCount) {
+  return mode !== "box" || workspaceCount === 0;
+}
+
+function composeConfig() {
+  return execSync("docker compose -f docker-compose.yml config", { encoding: "utf8", cwd: ROOT });
+}
+
 async function main() {
+  // п.10 Compose: файл валиден (postgres + порт 3000). Сборка образа на overlayfs не обязана быть зелёной.
+  const compose = composeConfig();
+  assert(/postgres:16/.test(compose), "compose postgres 16");
+  assert(/published:\s*"?3000"?/.test(compose) || /3000:3000/.test(compose), "compose publishes 3000");
+
   assert(extraPublicRegisterAllowed("box", 0) === true, "box first owner");
   assert(extraPublicRegisterAllowed("box", 1) === false, "box extra register closed");
   assert(extraPublicRegisterAllowed("saas", 9) === true, "saas stays open");
+  assert(boxOnboardingAllowed("box", 0) === true, "box first workspace");
+  assert(boxOnboardingAllowed("box", 1) === false, "box second workspace closed");
 
   const health = await req("/api/health");
   assert(health.status === 200 && health.data.ok === true, "health");
   assert(health.data.deployMode === "saas" || health.data.deployMode === "box", "deployMode flag");
   assert(typeof health.data.publicRegistration === "boolean", "publicRegistration flag");
   assert(health.data.boxSingleWorkspace === (health.data.deployMode === "box"), "boxSingleWorkspace");
+  assert(typeof health.data.workspaceCount === "number", "workspaceCount");
   if (health.data.deployMode === "box") {
     const blocked = await req("/api/auth/register", {
       method: "POST",
@@ -83,6 +104,14 @@ async function main() {
   });
   assert(r.status === 200, "onboarding: " + JSON.stringify(r.data));
   if (r.cookie) cookie = r.cookie;
+  const againOnboard = await req("/api/onboarding", {
+    method: "POST",
+    cookie,
+    json: { name: "Ещё раз", tradeDescription: "повтор" },
+  });
+  assert(againOnboard.status === 400, "second onboarding blocked");
+  const healthWs = await req("/api/health");
+  assert(healthWs.data.workspaceCount >= 1, "workspaceCount after onboard");
 
   const empty = await req("/api/flow", { cookie });
   assert(empty.status === 200, "flow after onboard");
@@ -135,6 +164,7 @@ async function main() {
   assert(String(formCh.snippet).includes("#F2F2F2"), "widget paper #F2F2F2");
   assert(String(formCh.snippet).includes("#99CCFF"), "widget accent #99CCFF");
   assert(String(formCh.snippet).includes("#C5E2FF"), "widget mist #C5E2FF");
+  assert(String(formCh.snippet).includes("Calibri"), "widget Calibri");
   assert(String(formCh.snippet).includes("color:#1a1a1a"), "widget dark text");
   assert(String(formCh.snippet).includes("Написать в чат"), "short form chat link");
   assert(!/tnved|Incoterms|контейнер/i.test(String(formCh.snippet)), "snippet is not VED form");
@@ -180,6 +210,7 @@ async function main() {
   assert(contactCard.status === 200 && contactCard.data.id === contactA, "contact card");
   assert((contactCard.data.channels || []).length >= 1, "contact channels");
   assert((contactCard.data.leads || []).some((l) => l.id === leadA), "contact leads");
+  assert((contactCard.data.conversations || []).length >= 1, "contact conversations");
   assert(contactCard.data.name === "Клиент А", "short form stores name");
   assert(contactCard.data.phone === phoneA, "short form stores phone");
   r = await req(`/api/contacts/${contactA}`, { method: "PATCH", cookie, json: { phone: "abc" } });
@@ -218,6 +249,39 @@ async function main() {
   assert(r.status === 400, "invalid phone rejected");
   const leads2 = await req("/api/leads", { cookie });
   assert(leads2.data.items.length === beforeInvalid, "invalid phone does not create lead");
+
+  // п.6 ТН ВЭД: невалидный extra-ключ не создаёт лид; валидный пишется в карточку.
+  r = await req("/api/fields", {
+    method: "POST",
+    cookie,
+    json: { name: "ТН ВЭД", key: "hs_code", fieldType: "tnved" },
+  });
+  assert(r.status === 200 && r.data.field?.key === "hs_code", "extra tnved field");
+  const phoneBadHs = "7999100" + String(Math.floor(1000 + Math.random() * 8999));
+  const phoneOkHs = "7999101" + String(Math.floor(1000 + Math.random() * 8999));
+  const leadsHsBefore = (await req("/api/leads", { cookie })).data.items.length;
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "ТН брак", phone: phoneBadHs, hs_code: "123" },
+  });
+  assert(r.status === 400, "invalid tnved rejected " + JSON.stringify(r.data));
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "ТН глава 77", phone: phoneBadHs, hs_code: "7700000000" },
+  });
+  assert(r.status === 400, "tnved chapter 77 rejected");
+  const leadsHsAfterBad = (await req("/api/leads", { cookie })).data.items.length;
+  assert(leadsHsAfterBad === leadsHsBefore, "invalid tnved does not create lead");
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "ТН ок", phone: phoneOkHs, hs_code: "8471500000" },
+  });
+  assert(r.status === 200 && r.data.leadId, "valid tnved creates lead");
+  const hsContact = await req(`/api/contacts/${r.data.contactId}`, { cookie });
+  assert(
+    (hsContact.data.fieldValues || []).some((v) => v.field.key === "hs_code" && v.value === "8471500000"),
+    "valid tnved stored on contact",
+  );
 
   r = await req(`/api/flow/blocks/${parseBlock.id}`, {
     method: "PATCH",
@@ -375,6 +439,10 @@ async function main() {
   r = await req(`/api/leads/${leadA}/claim`, { method: "POST", cookie });
   assert(r.status === 200, "claim lead");
   assert(r.data.lead.status === "in_progress", "claim sets in_progress");
+  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
+  assert(r.status === 200 && r.data.status === "rejected", "lead Отказ");
+  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "in_progress" } });
+  assert(r.status === 200 && r.data.status === "in_progress", "lead back in progress");
 
   r = await req("/api/team", { method: "POST", cookie, json: {} });
   assert(r.status === 200 && r.data.invite.token, "invite");
@@ -722,6 +790,15 @@ async function main() {
   );
   const cargoLeadAfter = await req(`/api/leads/${cargoLead.data.id}`, { cookie });
   assert(cargoLeadAfter.data.conversation?.id === cargoConv.data.id, "conversation stays on lead after send");
+  const cargoContactAfter = await req(`/api/contacts/${cargoContact.data.id}`, { cookie });
+  const cargoDraftOnContact = (cargoContactAfter.data.conversations || [])
+    .flatMap((c) => c.messages || [])
+    .find((m) => m.direction === "draft");
+  assert(cargoDraftOnContact && /100% фрахта/i.test(cargoDraftOnContact.body), "contact card shows draft snippet");
+  assert(
+    (cargoContactAfter.data.leads || []).some((l) => l.status === "new" || l.status === "in_progress"),
+    "contact lead status russian-ready",
+  );
   r = await req(`/api/conversations/${cargoConv.data.id}`, {
     method: "POST",
     cookie,
@@ -846,6 +923,16 @@ async function main() {
   const lockEmail = `lock-${id}@example.com`;
   r = await req("/api/auth/register", { method: "POST", json: { name: "Лок", email: lockEmail, password: "secret12" } });
   assert(r.status === 200, "lock user");
+  const lockCookie = r.cookie;
+  const modeNow = (await req("/api/health")).data.deployMode;
+  if (modeNow === "box") {
+    const boxSecond = await req("/api/onboarding", {
+      method: "POST",
+      cookie: lockCookie,
+      json: { name: "Второй ящик", tradeDescription: "коробка" },
+    });
+    assert(boxSecond.status === 403, "box one workspace");
+  }
   let last = null;
   for (let i = 0; i < 5; i++) {
     last = await req("/api/auth/login", { method: "POST", json: { email: lockEmail, password: "wrong-pass" } });
