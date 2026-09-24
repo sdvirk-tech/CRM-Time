@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { prisma } from "./prisma";
-import { BAZA_ZNANIY, CARGO_FIELDS, PARSE_CARGO_PROMPT, SALES_FIRST_REPLY, SALES_PROMPT } from "./sales";
+import { BAZA_ZNANIY, CARGO_FIELDS, PARSE_CARGO_PROMPT, PING_PROMPT, SALES_FIRST_REPLY, SALES_PROMPT } from "./sales";
 
 export const VED_TEMPLATE = CARGO_FIELDS.map((f) => ({ ...f }));
 
@@ -53,6 +53,12 @@ export async function applyVedTemplate(workspaceId: string) {
       data: { greeting: SALES_FIRST_REPLY },
     });
   }
+  if (ws && !ws.salesPrompt?.trim()) {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { salesPrompt: SALES_PROMPT },
+    });
+  }
   await prisma.channel.updateMany({
     where: { workspaceId, type: { in: ["telegram", "web_chat"] }, topicId: null },
     data: { topicId: topic.id },
@@ -68,6 +74,7 @@ export async function bindVedTopic(workspaceId: string, channelId: string) {
 export function defaultProcessPrompt(processType: string) {
   if (processType === "draft_reply") return SALES_PROMPT;
   if (processType === "parse_inbound") return PARSE_CARGO_PROMPT;
+  if (processType === "client_ping") return PING_PROMPT;
   return "";
 }
 
@@ -83,7 +90,7 @@ export type BlockConfig = {
   channelId?: string;
   channelType?: "telegram" | "web_form" | "web_chat";
   aiProcessId?: string;
-  processType?: "parse_inbound" | "draft_reply" | "deep_analysis";
+  processType?: "parse_inbound" | "draft_reply" | "deep_analysis" | "client_ping";
   actionType?: "create_lead" | "show_draft";
   allowedOrigins?: string[];
 };
@@ -107,6 +114,7 @@ function compactName(block: PreviewBlock) {
   if (block.type === "ai_process") {
     if (cfg.processType === "parse_inbound") return "разобрать";
     if (cfg.processType === "draft_reply") return "черновик";
+    if (cfg.processType === "client_ping") return "пинг";
     return "глубокий анализ";
   }
   if (cfg.actionType === "create_lead") return "создать лид";

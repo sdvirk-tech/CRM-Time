@@ -137,6 +137,12 @@ export async function runModel(opts: {
   if (opts.provider === "mock") {
     if (opts.model === "fail") throw new Error("Искусственный сбой модели (mock:fail)");
     const isB = opts.model === "ok-b";
+    if (opts.system.includes("CUSTOM_MARKER")) {
+      return sanitizeModelText(`CUSTOM_MARKER сохранённый промт воркспейса. ${opts.user.slice(0, 80)}`);
+    }
+    if (opts.system.includes("ROLE=client_ping")) {
+      return sanitizeModelText("Здравствуйте! Не получили ответа по заявке. Подскажите, актуально ли?");
+    }
     if (opts.system.includes("ROLE=parse_cargo_json")) {
       const cargo = extractCargoFromText(opts.user);
       const ready = isCardComplete(cargo);

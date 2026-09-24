@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { channelLabel, leadStatusLabel } from "@/lib/labels";
+import { channelLabel, leadStatusLabel, urgentReasonLabel } from "@/lib/labels";
 import { CargoCard } from "@/components/CargoCard";
 
 type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
@@ -15,6 +15,8 @@ type Data = {
   urgentReason: string | null;
   status: string;
   aiError: string | null;
+  pingDraftedAt?: string | null;
+  pingSentAt?: string | null;
   assignee?: { id: string; name: string } | null;
   operators?: Operator[];
   contact: {
@@ -108,10 +110,9 @@ export default function ConversationPage() {
         <p className="mt-1 text-sm text-muted">
           {channelLabel(data.channel.type)}
           {data.assignee && ` · ${data.assignee.name}`}
-          {data.urgentReason === "default_model" && " · дефолт модели — человек в контуре"}
-          {data.urgentReason === "ai_error" && " · сбой модели"}
-          {data.urgentReason === "handoff" && " · клиент просит человека"}
-          {data.urgentReason === "ai_limit" && " · лимит черновиков ИИ"}
+          {urgentReasonLabel(data.urgentReason) && ` · ${urgentReasonLabel(data.urgentReason)}`}
+          {data.pingDraftedAt && !data.pingSentAt && " · черновик пинга"}
+          {data.pingSentAt && " · пинг ушёл"}
           {data.status === "manager" && " · у менеджера"}
           {data.status === "closed" && " · закрыто"}
         </p>
@@ -149,7 +150,9 @@ export default function ConversationPage() {
                 {m.direction === "inbound"
                   ? "клиент"
                   : m.direction === "draft"
-                    ? "черновик"
+                    ? data.pingDraftedAt && !data.pingSentAt
+                      ? "пинг"
+                      : "черновик"
                     : m.direction === "system"
                       ? m.aiError
                         ? "ошибка"
@@ -172,7 +175,9 @@ export default function ConversationPage() {
           </div>
           {draft && (
             <p className="text-xs text-muted">
-              {cardValues.length
+              {data.pingDraftedAt && !data.pingSentAt
+                ? "Черновик пинга: клиент молчит дольше SLA. В чат уйдёт только после «Отправить», если на слоте пинга нет явной модели."
+                : cardValues.length
                 ? "Коммерческий черновик по карточке. В чат сайта и Telegram уйдёт только после «Отправить»."
                 : data.channel.type === "web_chat"
                   ? "Пока карточка собирается, явная модель может отвечать в чате. Коммерческий ответ после карточки — кнопкой «Отправить»."

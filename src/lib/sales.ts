@@ -85,6 +85,13 @@ export const BAZA_ZNANIY = `База знаний ВЭД (МАКС). Ориен�
 export const SALES_FIRST_REPLY =
   "Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.";
 
+export const PING_PROMPT = `ROLE=client_ping
+Пинг клиенту после молчания. Один короткий вопрос: заявка ещё актуальна?
+Без сметы, без JSON, без давления, без новой карточки. Обычный текст.`;
+
+export const DEFAULT_PING_TEXT =
+  "Здравствуйте! Не получили ответа по заявке. Подскажите, актуально ли?";
+
 export const CARGO_FIELDS = [
   { name: "Телеграм", key: "telegram", fieldType: "text", required: false },
   { name: "Max", key: "max", fieldType: "text", required: false },

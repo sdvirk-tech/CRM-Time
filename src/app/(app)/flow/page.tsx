@@ -16,6 +16,8 @@ type Channel = {
   enabled: boolean;
   topicId?: string | null;
   allowedOrigins: string[];
+  pollMode?: boolean;
+  pollOffset?: number;
 };
 type Topic = { id: string; name: string };
 type Process = {
@@ -46,6 +48,7 @@ const palette = [
   { kind: "channel_telegram", group: "Канал", label: "Telegram" },
   { kind: "ai_parse", group: "AI", label: "Разобрать входящее" },
   { kind: "ai_draft", group: "AI", label: "Черновик ответа" },
+  { kind: "ai_ping", group: "AI", label: "Пинг клиента" },
   { kind: "ai_deep", group: "AI", label: "Глубокий анализ" },
   { kind: "action_create_lead", group: "Действие", label: "Создать лид" },
   { kind: "action_show_draft", group: "Действие", label: "Показать черновик" },
@@ -61,18 +64,24 @@ export default function FlowPage() {
     role: string;
     defaultModel: string | null;
     greeting: string;
+    salesPrompt?: string;
+    routingMode?: string;
     topics: Topic[];
     publicUrl?: string;
+    httpsWebhook?: boolean;
     preview?: string;
     compact?: string;
   } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [tab, setTab] = useState<"chain" | "models">("chain");
+  const [salesPrompt, setSalesPrompt] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/flow");
-    setData(await res.json());
+    const json = await res.json();
+    setData(json);
+    if (typeof json.salesPrompt === "string") setSalesPrompt(json.salesPrompt);
   }, []);
 
   useEffect(() => {
@@ -109,6 +118,17 @@ export default function FlowPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ greeting: value }),
     });
+    await load();
+  }
+
+  async function saveSalesPrompt() {
+    const res = await fetch("/api/workspace", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ salesPrompt }),
+    });
+    const json = await res.json();
+    setNotice(res.ok ? "Промт МАКС сохранён в воркспейсе" : json.error || "Ошибка");
     await load();
   }
 
@@ -235,6 +255,25 @@ export default function FlowPage() {
               </label>
             )}
             {owner && (
+              <div className="mt-6">
+                <label className="block text-sm">
+                  Промт МАКС (продажник) — системный текст черновика на воркспейс. Не Git, не файл на диске.
+                  <textarea
+                    className="mt-1 w-full rounded border border-line bg-slot px-3 py-2 font-mono text-xs"
+                    rows={12}
+                    value={salesPrompt}
+                    onChange={(e) => setSalesPrompt(e.target.value)}
+                  />
+                </label>
+                <button type="button" onClick={saveSalesPrompt} className="mt-2 rounded bg-accent px-4 py-2 text-sm text-ink">
+                  Сохранить промт
+                </button>
+                <p className="mt-2 text-xs text-muted">
+                  Сохранённый текст подставляется во все процессы «черновик ответа». Пинг клиента — отдельный слот в палитре.
+                </p>
+              </div>
+            )}
+            {owner && (
               <label className="mt-6 block text-sm">
                 Дефолт воркспейса (запасной ключ, не автопилот)
                 <select
@@ -298,6 +337,7 @@ export default function FlowPage() {
           models={data.models}
           topics={data.topics ?? []}
           publicUrl={data.publicUrl ?? ""}
+          httpsWebhook={Boolean(data.httpsWebhook)}
           owner={owner}
           onClose={() => setOpenId(null)}
           onSaved={async () => {
@@ -316,6 +356,7 @@ function Sheet({
   models,
   topics,
   publicUrl,
+  httpsWebhook,
   owner,
   onClose,
   onSaved,
@@ -326,6 +367,7 @@ function Sheet({
   models: Model[];
   topics: Topic[];
   publicUrl: string;
+  httpsWebhook: boolean;
   owner: boolean;
   onClose: () => void;
   onSaved: () => Promise<void>;
@@ -341,6 +383,7 @@ function Sheet({
   const [msg, setMsg] = useState("");
   const [tgChat, setTgChat] = useState("");
   const [tgText, setTgText] = useState("модули памяти, 20 кг, Шанхай → Москва, АВИА");
+  const [pollMode, setPollMode] = useState(Boolean(channel?.pollMode) || !httpsWebhook);
 
   async function save(extra: Record<string, unknown> = {}) {
     const [provider, ...rest] = modelVal.split(":");
@@ -386,6 +429,35 @@ function Sheet({
     if (!res.ok) setMsg(data.error || "Ошибка webhook");
     else if (data.ok) setMsg(`Webhook: ${data.description || "зарегистрирован"}`);
     else setMsg(data.description || data.error || "Telegram не принял URL — нужен HTTPS PUBLIC_URL");
+    if (data.pollMode) {
+      setPollMode(true);
+      setMsg(data.description || "Включён опрос getUpdates");
+    }
+  }
+
+  async function savePoll(on: boolean) {
+    if (!channel) return;
+    setPollMode(on);
+    const res = await fetch(`/api/channels/${channel.id}/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pollMode: on }),
+    });
+    const data = await res.json();
+    setMsg(res.ok ? (on ? "Опрос getUpdates включён" : "Опрос выключен") : data.error || "Ошибка опроса");
+    await onSaved();
+  }
+
+  async function runPoll() {
+    if (!channel) return;
+    const res = await fetch(`/api/channels/${channel.id}/poll`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run: true }),
+    });
+    const data = await res.json();
+    setMsg(res.ok ? `Опрос: входящих ${data.processed ?? 0}` : data.error || "Опрос не удался");
+    await onSaved();
   }
 
   async function simulateTg() {
@@ -488,11 +560,25 @@ function Sheet({
               <>
             <p className="break-all text-xs text-muted">Публичный URL: {publicUrl || "APP_URL / PUBLIC_URL"}</p>
             <p className="break-all text-xs text-muted">Webhook: {channel.webhookUrl}</p>
+            {!httpsWebhook && (
+              <p className="text-xs text-muted">
+                Нет HTTPS — живой бот идёт опросом getUpdates с этой машины, webhook не обязателен.
+              </p>
+            )}
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={pollMode} onChange={(e) => savePoll(e.target.checked)} />
+              Опрос Telegram (getUpdates)
+            </label>
               </>
             )}
             {owner && (
               <button type="button" onClick={reregisterWebhook} className="rounded border border-accent bg-paper px-3 py-1.5">
                 Перерегистрировать webhook
+              </button>
+            )}
+            {owner && pollMode && (
+              <button type="button" onClick={runPoll} className="rounded border border-line px-3 py-1.5">
+                Опросить сейчас
               </button>
             )}
             {owner && (
@@ -528,7 +614,9 @@ function Sheet({
               </select>
             </label>
             <p className="text-xs text-muted">
-              Пусто = дефолт воркспейса и сразу менеджеру. Явная модель — без авто-срочности, пока не упадёт.
+              {process.type === "client_ping"
+                ? "Пинг после SLA. Черновик всегда. В чат уходит сам только если здесь выбрана явная модель. Дефолт воркспейса — срочно менеджеру, без автоотправки."
+                : "Пусто = дефолт воркспейса и сразу менеджеру. Явная модель — без авто-срочности, пока не упадёт."}
             </p>
             <label className="block">
               Промт

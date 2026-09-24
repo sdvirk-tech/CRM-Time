@@ -7,6 +7,8 @@ import { encryptSecret } from "@/lib/crypto";
 import { decryptSecret } from "@/lib/crypto";
 import { publicUrl } from "@/lib/env";
 import { telegramSetWebhook } from "@/lib/telegram";
+import { asPollConfig } from "@/lib/telegram-ingest";
+import { enableTelegramPoll, httpsWebhookAvailable } from "@/lib/telegram-poll";
 import { z } from "zod";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -37,22 +39,29 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const cfg = asConfig(block.config);
 
     if (block.type === "channel" && cfg.channelId) {
+      const channel = await prisma.channel.findUnique({ where: { id: cfg.channelId } });
       const data: { name?: string; secretsEnc?: string; config?: object; enabled?: boolean; topicId?: string | null } = {};
       if (parsed.data.label) data.name = parsed.data.label;
       if (parsed.data.token) data.secretsEnc = encryptSecret(parsed.data.token.trim());
-      if (parsed.data.allowedOrigins) data.config = { allowedOrigins: parsed.data.allowedOrigins };
+      if (parsed.data.allowedOrigins) {
+        data.config = { ...asPollConfig(channel?.config), allowedOrigins: parsed.data.allowedOrigins };
+      }
       if (parsed.data.enabled !== undefined) data.enabled = parsed.data.enabled;
       if (parsed.data.topicId !== undefined) data.topicId = parsed.data.topicId;
       if (Object.keys(data).length) {
         const updatedChannel = await prisma.channel.update({ where: { id: cfg.channelId }, data });
         if (parsed.data.token && updatedChannel.type === "telegram" && updatedChannel.secretsEnc) {
-          try {
-            await telegramSetWebhook(
-              decryptSecret(updatedChannel.secretsEnc),
-              `${publicUrl()}/api/ingest/telegram/${updatedChannel.publicKey}`,
-            );
-          } catch {
-            /* localhost без HTTPS — ок, кнопка перерегистрации покажет ответ Telegram */
+          if (!httpsWebhookAvailable()) {
+            await enableTelegramPoll(updatedChannel.id, true);
+          } else {
+            try {
+              await telegramSetWebhook(
+                decryptSecret(updatedChannel.secretsEnc),
+                `${publicUrl()}/api/ingest/telegram/${updatedChannel.publicKey}`,
+              );
+            } catch {
+              await enableTelegramPoll(updatedChannel.id, true);
+            }
           }
         }
       }

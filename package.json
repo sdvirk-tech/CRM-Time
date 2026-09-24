@@ -9,7 +9,8 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:generate": "prisma generate",
-    "test:phase1": "node scripts/e2e-phase1.mjs"
+    "test:phase1": "node scripts/e2e-phase1.mjs && node scripts/e2e-phase2.mjs",
+    "test:phase2": "node scripts/e2e-phase2.mjs"
   },
   "dependencies": {
     "@fontsource/carlito": "^5.3.0",

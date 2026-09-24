@@ -17,7 +17,10 @@ export async function GET() {
           where: { workspaceId: session.workspaceId, acceptedAt: null },
         })
       : [];
+    const workspace = await prisma.workspace.findUnique({ where: { id: session.workspaceId } });
     return NextResponse.json({
+      routingMode: workspace?.routingMode || "pool",
+      role: session.role,
       members: members.map((m) => ({
         id: m.id,
         userId: m.userId,

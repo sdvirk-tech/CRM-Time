@@ -34,6 +34,8 @@ export async function GET() {
         urgent: i.urgent,
         urgentReason: i.urgentReason,
         stale,
+        pingDrafted: Boolean(i.pingDraftedAt),
+        pingSent: Boolean(i.pingSentAt),
         aiError: i.aiError,
         cardReady: i.leads.length > 0,
         leadId: i.leads[0]?.id ?? null,

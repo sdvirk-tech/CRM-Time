@@ -5,6 +5,7 @@ import { jsonError } from "@/lib/auth";
 import { decryptSecret } from "@/lib/crypto";
 import { publicUrl } from "@/lib/env";
 import { telegramSetWebhook } from "@/lib/telegram";
+import { enableTelegramPoll, httpsWebhookAvailable } from "@/lib/telegram-poll";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -18,6 +19,16 @@ export async function POST(_req: Request, ctx: Ctx) {
     if (!channel.secretsEnc) return jsonError("Сначала сохраните токен");
     const token = decryptSecret(channel.secretsEnc);
     const url = `${publicUrl()}/api/ingest/telegram/${channel.publicKey}`;
+    if (!httpsWebhookAvailable()) {
+      const poll = await enableTelegramPoll(channel.id, true);
+      return NextResponse.json({
+        ok: false,
+        url,
+        publicUrl: publicUrl(),
+        pollMode: poll.pollMode,
+        description: "Нет HTTPS PUBLIC_URL — бот принимает входящие опросом getUpdates",
+      });
+    }
     try {
       const result = await telegramSetWebhook(token, url);
       return NextResponse.json({
@@ -27,11 +38,13 @@ export async function POST(_req: Request, ctx: Ctx) {
         description: result.description,
       });
     } catch (e) {
+      const poll = await enableTelegramPoll(channel.id, true);
       return NextResponse.json({
         ok: false,
         url,
         publicUrl: publicUrl(),
-        description: e instanceof Error ? e.message : "Telegram недоступен",
+        pollMode: poll.pollMode,
+        description: e instanceof Error ? e.message : "Telegram недоступен — включён опрос",
       });
     }
   });

@@ -17,3 +17,12 @@ export function channelLabel(type: string) {
   if (type === "web_chat") return "чат";
   return "Telegram";
 }
+
+export function urgentReasonLabel(reason: string | null | undefined) {
+  if (reason === "default_model") return "дефолт модели — человек в контуре";
+  if (reason === "ai_error") return "сбой модели";
+  if (reason === "handoff") return "клиент просит человека";
+  if (reason === "ai_limit") return "лимит черновиков ИИ";
+  if (reason === "silent_client") return "клиент молчит — пинг";
+  return "";
+}

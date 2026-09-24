@@ -12,11 +12,13 @@ import {
   missingCardSlots,
   normalizeRoute,
   snapshotFromBag,
+  SALES_PROMPT,
   withCardState,
   withCommercialDraft,
 } from "./sales";
 import { defaultProcessPrompt } from "./workspace";
 import { deliverOutbound } from "./outbound";
+import { pickAssignee } from "./routing";
 import {
   AI_DRAFT_LIMIT,
   defaultGreeting,
@@ -47,21 +49,13 @@ function explicitBinding(provider?: string | null, model?: string | null) {
   return { provider, model };
 }
 
-async function pickAssignee(workspaceId: string): Promise<string> {
-  const members = await prisma.workspaceMember.findMany({ where: { workspaceId } });
-  const managers = members.filter((m) => m.role === "manager");
-  const owner = members.find((m) => m.role === "owner");
-  const pool = managers.length ? managers : owner ? [owner] : [];
-  if (!pool.length) throw new Error("В воркспейсе нет людей");
-
-  const open = await prisma.lead.groupBy({
-    by: ["assigneeId"],
-    where: { workspaceId, status: { in: ["new", "in_progress"] }, assigneeId: { not: null } },
-    _count: { _all: true },
-  });
-  const countBy = new Map(open.map((r) => [r.assigneeId, r._count._all]));
-  pool.sort((a, b) => (countBy.get(a.userId) ?? 0) - (countBy.get(b.userId) ?? 0));
-  return pool[0].userId;
+function salesSystemPrompt(processPrompt: string, type: string, workspaceSales?: string | null) {
+  if (type === "draft_reply") {
+    const fromWs = workspaceSales?.trim();
+    if (fromWs) return fromWs;
+    return processPrompt || defaultProcessPrompt("draft_reply") || SALES_PROMPT;
+  }
+  return processPrompt || defaultProcessPrompt(type);
 }
 
 async function markUrgent(opts: {
@@ -181,7 +175,7 @@ async function loadProcesses(workspaceId: string): Promise<ProcessRun[]> {
       processId: proc.id,
       blockId: block.id,
       type: proc.type,
-      prompt: proc.prompt,
+      prompt: salesSystemPrompt(proc.prompt, proc.type, ws.salesPrompt),
       explicit: explicitBinding(proc.binding?.provider, proc.binding?.model),
       fallback: parseBinding(ws.defaultModel),
     });

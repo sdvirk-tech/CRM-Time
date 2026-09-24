@@ -5,6 +5,8 @@ import { FormEvent, useEffect, useState } from "react";
 export default function TeamPage() {
   const [members, setMembers] = useState<{ id: string; role: string; name: string; email: string }[]>([]);
   const [invites, setInvites] = useState<{ id: string; url: string; email: string | null }[]>([]);
+  const [routingMode, setRoutingMode] = useState<"pool" | "round_robin">("pool");
+  const [role, setRole] = useState("manager");
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -12,6 +14,8 @@ export default function TeamPage() {
     const d = await fetch("/api/team").then((r) => r.json());
     setMembers(d.members ?? []);
     setInvites(d.invites ?? []);
+    if (d.routingMode === "round_robin" || d.routingMode === "pool") setRoutingMode(d.routingMode);
+    if (d.role) setRole(d.role);
   }
 
   useEffect(() => {
@@ -34,10 +38,48 @@ export default function TeamPage() {
     }
   }
 
+  async function saveRouting(mode: "pool" | "round_robin") {
+    setRoutingMode(mode);
+    const res = await fetch("/api/workspace", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ routingMode: mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) setMsg(data.error || "Ошибка");
+    else setMsg(mode === "pool" ? "Свободный пул" : "По кругу");
+  }
+
+  const owner = role === "owner";
+
   return (
     <main className="p-8">
       <h1 className="text-3xl font-semibold">Команда</h1>
       <p className="mt-2 text-muted">Владелец кладёт слоты. Менеджер берёт входящие и лиды, без токенов каналов.</p>
+      {owner && (
+        <fieldset className="mt-6 max-w-xl space-y-2 text-sm">
+          <legend className="font-medium">Назначение, если менеджеров несколько</legend>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="routing"
+              checked={routingMode === "pool"}
+              onChange={() => saveRouting("pool")}
+            />
+            Свободный пул — меньше открытых лидов
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="radio"
+              name="routing"
+              checked={routingMode === "round_robin"}
+              onChange={() => saveRouting("round_robin")}
+            />
+            По кругу
+          </label>
+          <p className="text-xs text-muted">Кнопка «взять» по-прежнему ставит того, кто нажал.</p>
+        </fieldset>
+      )}
       <ul className="mt-6 space-y-2">
         {members.map((m) => (
           <li key={m.id} className="rounded-xl border border-line bg-slot px-4 py-3">

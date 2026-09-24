@@ -63,7 +63,12 @@ export async function POST(req: Request, ctx: Ctx) {
       const msg = await deliverOutbound(conv, body);
       await prisma.conversation.update({
         where: { id },
-        data: { status: "manager", assigneeId: session.userId, unread: false },
+        data: {
+          status: "manager",
+          assigneeId: session.userId,
+          unread: false,
+          ...(conv.pingDraftedAt && !conv.pingSentAt ? { pingSentAt: new Date() } : {}),
+        },
       });
       await logActivity({
         workspaceId: session.workspaceId,
@@ -164,7 +169,15 @@ export async function PATCH(req: Request, ctx: Ctx) {
       });
       const updated = await prisma.conversation.update({
         where: { id },
-        data: { status: "ai", urgent: false, urgentReason: null, aiError: null, unread: false },
+        data: {
+          status: "ai",
+          urgent: false,
+          urgentReason: null,
+          aiError: null,
+          unread: false,
+          pingDraftedAt: null,
+          pingSentAt: null,
+        },
       });
       await logActivity({
         workspaceId: session.workspaceId,

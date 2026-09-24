@@ -46,7 +46,7 @@ export function DayOverview({ stats, onSla }: { stats: DayStats | null; onSla?: 
       </p>
       <p className="mt-1 text-sm text-muted">
         Сейчас: без ответа {stats.unread} · новые лиды {stats.newLeads} · срочно {stats.urgent} · завис {stats.stale}
-        <span className="block text-xs">Молчит клиент после нашего ответа — тоже завис (тот же SLA).</span>
+        <span className="block text-xs">Молчит клиент после нашего ответа — тоже завис. Черновик пинга — по кнопке «Отправить», если нет явной модели на слоте пинга.</span>
       </p>
       {owner && (
         <form onSubmit={saveSla} className="mt-3 flex flex-wrap items-end gap-2 text-sm">

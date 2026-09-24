@@ -14,7 +14,9 @@ export async function GET() {
       tradeDescription: workspace.tradeDescription,
       defaultModel: workspace.defaultModel,
       greeting: workspace.greeting,
+      salesPrompt: workspace.salesPrompt || "",
       slaMinutes: workspace.slaMinutes,
+      routingMode: workspace.routingMode || "pool",
     });
   });
 }
@@ -28,14 +30,23 @@ export async function PATCH(req: Request) {
         tradeDescription: z.string().optional(),
         defaultModel: z.string().nullable().optional(),
         greeting: z.string().max(2000).optional(),
+        salesPrompt: z.string().max(40000).optional(),
         slaMinutes: z.coerce.number().int().min(0).max(24 * 60).optional(),
+        routingMode: z.enum(["pool", "round_robin"]).optional(),
       })
       .safeParse(body);
     if (!parsed.success) return jsonError("Некорректные данные");
+    const data = { ...parsed.data };
     const workspace = await prisma.workspace.update({
       where: { id: session.workspaceId },
-      data: parsed.data,
+      data,
     });
+    if (parsed.data.salesPrompt !== undefined) {
+      await prisma.aiProcess.updateMany({
+        where: { workspaceId: session.workspaceId, type: "draft_reply" },
+        data: { prompt: parsed.data.salesPrompt },
+      });
+    }
     return NextResponse.json(workspace);
   });
 }

@@ -5,6 +5,8 @@ import { asConfig, buildFlowPreview, ensureWorkspaceFlow } from "@/lib/workspace
 import { deepAnalysisEnabled, listModels } from "@/lib/ai";
 import { decryptSecret } from "@/lib/crypto";
 import { publicUrl } from "@/lib/env";
+import { asPollConfig } from "@/lib/telegram-ingest";
+import { httpsWebhookAvailable } from "@/lib/telegram-poll";
 
 export async function GET() {
   return withSession(async (session) => {
@@ -60,6 +62,8 @@ export async function GET() {
         chatUrl: `${publicUrl()}/c/${c.publicKey}`,
         webhookUrl: `${publicUrl()}/api/ingest/telegram/${c.publicKey}`,
         tokenPreview: c.secretsEnc ? "••••••••" : null,
+        pollMode: Boolean(asPollConfig(c.config).pollMode) || (!httpsWebhookAvailable() && hasToken),
+        pollOffset: asPollConfig(c.config).pollOffset ?? 0,
       };
     });
     const workspace = await prisma.workspace.findUnique({ where: { id: session.workspaceId } });
@@ -73,8 +77,11 @@ export async function GET() {
       role: session.role,
       defaultModel: workspace?.defaultModel ?? null,
       greeting: workspace?.greeting ?? "",
+      salesPrompt: workspace?.salesPrompt ?? "",
+      routingMode: workspace?.routingMode ?? "pool",
       publicUrl: isOwner ? publicUrl() : null,
       slaMinutes: workspace?.slaMinutes ?? 15,
+      httpsWebhook: httpsWebhookAvailable(),
       preview,
       compact,
       topics: await prisma.knowledgeTopic.findMany({

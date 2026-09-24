@@ -18,6 +18,26 @@ export async function telegramSend(token: string, chatId: string, text: string) 
   if (!data.ok) throw new Error(data.description || "Не удалось отправить в Telegram");
 }
 
+export async function telegramDeleteWebhook(token: string) {
+  const res = await fetch(`https://api.telegram.org/bot${token}/deleteWebhook`, { method: "POST" });
+  const data = (await res.json()) as { ok?: boolean; description?: string };
+  return { ok: Boolean(data.ok), description: data.description || (data.ok ? "Webhook снят" : "deleteWebhook не ок") };
+}
+
+export async function telegramGetUpdates(token: string, offset = 0) {
+  const url = new URL(`https://api.telegram.org/bot${token}/getUpdates`);
+  url.searchParams.set("timeout", "0");
+  if (offset) url.searchParams.set("offset", String(offset));
+  const res = await fetch(url);
+  const data = (await res.json()) as {
+    ok?: boolean;
+    description?: string;
+    result?: { update_id: number; message?: unknown }[];
+  };
+  if (!data.ok) throw new Error(data.description || "getUpdates не ок");
+  return data.result ?? [];
+}
+
 export async function telegramSetWebhook(token: string, url: string) {
   const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
     method: "POST",

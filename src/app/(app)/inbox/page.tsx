@@ -13,6 +13,8 @@ type Item = {
   status: string;
   aiError: string | null;
   cardReady?: boolean;
+  pingDrafted?: boolean;
+  pingSent?: boolean;
   contact: { id: string; name: string; phone: string | null };
   channel: { type: string; name: string };
   lastMessage: string;
@@ -92,7 +94,11 @@ export default function InboxPage() {
                   {item.status === "manager" ? " · менеджер" : item.status === "closed" ? " · закрыто" : ""}
                 </span>
                 {item.urgent && <span className="urgent-badge">срочно</span>}
+                {item.urgentReason === "silent_client" && <span className="urgent-badge">пинг</span>}
                 {item.stale && <span className="urgent-badge">завис</span>}
+                {item.pingDrafted && !item.pingSent && (
+                  <span className="rounded border border-dashed border-accent px-2 py-0.5 text-xs">черновик пинга</span>
+                )}
                 {item.cardReady && <span className="rounded bg-ok px-2 py-0.5 text-xs">карточка</span>}
               </div>
             </Link>

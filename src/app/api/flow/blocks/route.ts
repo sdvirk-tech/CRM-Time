@@ -13,6 +13,7 @@ const schema = z.object({
     "ai_parse",
     "ai_draft",
     "ai_deep",
+    "ai_ping",
     "action_create_lead",
     "action_show_draft",
   ]),
@@ -74,18 +75,25 @@ export async function POST(req: Request) {
           ? "parse_inbound"
           : parsed.data.kind === "ai_draft"
             ? "draft_reply"
-            : "deep_analysis";
+            : parsed.data.kind === "ai_ping"
+              ? "client_ping"
+              : "deep_analysis";
       const names = {
         parse_inbound: "Разобрать входящее",
         draft_reply: "Черновик ответа",
         deep_analysis: "Глубокий анализ",
+        client_ping: "Пинг клиента",
       } as const;
       const proc = await prisma.aiProcess.create({
         data: {
           workspaceId: ws,
           type: processType,
           name: names[processType],
-          prompt: defaultProcessPrompt(processType),
+          prompt:
+            processType === "draft_reply"
+              ? (await prisma.workspace.findUnique({ where: { id: ws } }))?.salesPrompt?.trim() ||
+                defaultProcessPrompt(processType)
+              : defaultProcessPrompt(processType),
         },
       });
       const block = await prisma.flowBlock.create({
