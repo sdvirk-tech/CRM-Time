@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CargoCard } from "@/components/CargoCard";
+import { MergeDuplicates } from "@/components/MergeDuplicates";
 import { channelLabel, leadStatusLabel } from "@/lib/labels";
 
 type Msg = { direction: string; body: string };
@@ -31,6 +32,7 @@ export default function ContactPage() {
     consentAt?: string | null;
     fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
     photos?: { href: string; kind: string; label: string }[];
+    duplicates?: { id: string; name: string; phone: string | null; telegram: string | null; reason: string }[];
   };
 
   return (
@@ -68,6 +70,7 @@ export default function ContactPage() {
         photos={contact.photos}
         consentAt={contact.consentAt}
       />
+      <MergeDuplicates items={contact.duplicates || []} />
       <section className="mt-8">
         <h2 className="text-xl font-semibold">Лиды</h2>
         <ul className="mt-2 space-y-1">

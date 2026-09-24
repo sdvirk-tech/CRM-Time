@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { withOwner, withSession } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
 import { z } from "zod";
+import { deployMode } from "@/lib/env";
+import { listModels } from "@/lib/ai";
 
 export async function GET() {
   return withSession(async (session) => {
@@ -16,7 +18,12 @@ export async function GET() {
       greeting: workspace.greeting,
       salesPrompt: workspace.salesPrompt || "",
       slaMinutes: workspace.slaMinutes,
+      pingEnabled: workspace.pingEnabled,
       routingMode: workspace.routingMode || "pool",
+      deployMode: deployMode(),
+      dataOnThisMachine: deployMode() === "box",
+      publicRegistration: deployMode() !== "box",
+      models: listModels(),
     });
   });
 }
@@ -31,6 +38,7 @@ export async function PATCH(req: Request) {
         defaultModel: z.string().nullable().optional(),
         greeting: z.string().max(2000).optional(),
         salesPrompt: z.string().max(40000).optional(),
+        pingEnabled: z.boolean().optional(),
         slaMinutes: z.coerce.number().int().min(0).max(24 * 60).optional(),
         routingMode: z.enum(["pool", "round_robin"]).optional(),
       })

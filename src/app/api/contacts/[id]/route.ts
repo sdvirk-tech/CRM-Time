@@ -9,7 +9,7 @@ import { channelLabel, leadStatusLabel } from "@/lib/labels";
 import { cargoCardPdf } from "@/lib/pdf";
 import { dlpContact, maskEmailIf, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
 import { getCbrRates } from "@/lib/cbr";
-import { extractPhotoRefs } from "@/lib/photos";
+import { findDuplicateContacts } from "@/lib/contacts";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -87,6 +87,10 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
+    const duplicates = (await findDuplicateContacts(session.workspaceId, contact.id)).map((d) => ({
+      ...d,
+      phone: maskPhoneIf(session.role, d.phone),
+    }));
     return NextResponse.json({
       ...dlpContact(session.role, contact),
       fx: await getCbrRates(),
@@ -97,6 +101,7 @@ export async function GET(req: Request, ctx: Ctx) {
           ...contact.conversations.flatMap((c) => (c.messages || []).map((m) => m.body)),
         ].join("\n"),
       ),
+      duplicates,
     });
   });
 }
@@ -112,6 +117,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");
+    const existing = await prisma.contact.findFirst({ where: { id, workspaceId: session.workspaceId } });
+    if (!existing) return jsonError("Контакт не найден", 404);
     const data = { ...parsed.data };
     if (data.phone) {
       const phone = normalizePhone(data.phone);

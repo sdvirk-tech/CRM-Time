@@ -28,6 +28,7 @@ import {
 } from "./dialog";
 import { loadKnowledgeForPrompt } from "./rag";
 import { formatCbrLine, getCbrRates } from "./cbr";
+import { notifyNewLead } from "./notify";
 
 export type IngestInput = {
   workspaceId: string;
@@ -558,6 +559,13 @@ export async function ingestInbound(input: IngestInput) {
         },
       });
       leadId = lead.id;
+      await notifyNewLead({
+        workspaceId: input.workspaceId,
+        leadId: lead.id,
+        contactId: contact.id,
+        contactName: contact.name,
+        assigneeId: lead.assigneeId,
+      });
     }
     if (!needsWatch && !handoff) {
       const conv = await prisma.conversation.findUnique({ where: { id: conversation.id } });

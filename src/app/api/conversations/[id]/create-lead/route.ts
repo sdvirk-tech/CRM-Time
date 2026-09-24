@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
+import { notifyNewLead } from "@/lib/notify";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -29,6 +30,14 @@ export async function POST(_req: Request, ctx: Ctx) {
         urgent: conv.urgent,
         assigneeId: session.userId,
       },
+    });
+    const contact = await prisma.contact.findUnique({ where: { id: conv.contactId } });
+    await notifyNewLead({
+      workspaceId: session.workspaceId,
+      leadId: lead.id,
+      contactId: conv.contactId,
+      contactName: contact?.name || "Контакт",
+      assigneeId: session.userId,
     });
     return NextResponse.json({ lead });
   });

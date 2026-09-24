@@ -18,7 +18,7 @@ export default function RegisterPage() {
     return (
       <main className="mx-auto max-w-md px-6 py-24">
         <h1 className="text-3xl font-semibold">Регистрация выключена</h1>
-        <p className="mt-3 text-muted">DEPLOY_MODE=box — войдите или примите приглашение.</p>
+        <p className="mt-3 text-muted">DEPLOY_MODE=box — данные на этой машине. Войдите или примите приглашение.</p>
         <Link className="mt-6 inline-block link" href="/login">
           Ко входу
         </Link>

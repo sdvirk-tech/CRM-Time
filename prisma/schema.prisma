@@ -19,6 +19,7 @@ model User {
   memberships  WorkspaceMember[]
   assignedLeads Lead[]           @relation("LeadAssignee")
   assignedConversations Conversation[] @relation("ConversationAssignee")
+  notifications Notification[]
   @@map("users")
 }
 
@@ -30,6 +31,7 @@ model Workspace {
   greeting         String            @default("Здравствуйте! Напишите задачу или попросите менеджера.")
   salesPrompt      String            @default("") @map("sales_prompt")
   slaMinutes       Int               @default(15) @map("sla_minutes")
+  pingEnabled      Boolean           @default(true) @map("ping_enabled")
   routingMode      String            @default("pool") @map("routing_mode")
   roundRobinAt     Int               @default(0) @map("round_robin_at")
   createdAt        DateTime          @default(now()) @map("created_at")
@@ -52,6 +54,7 @@ model Workspace {
   knowledgeTopics  KnowledgeTopic[]
   channelEvents    ChannelEvent[]
   activityEvents   ActivityEvent[]
+  notifications    Notification[]
   @@map("workspaces")
 }
 
@@ -60,6 +63,7 @@ model WorkspaceMember {
   workspaceId String    @map("workspace_id")
   userId      String    @map("user_id")
   role        String
+  telegram    String?
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -357,6 +361,24 @@ model Invite {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@index([workspaceId])
   @@map("invites")
+}
+
+model Notification {
+  id          String     @id @default(cuid())
+  workspaceId String     @map("workspace_id")
+  userId      String     @map("user_id")
+  type        String
+  title       String
+  body        String     @default("")
+  href        String?
+  leadId      String?    @map("lead_id")
+  contactId   String?    @map("contact_id")
+  readAt      DateTime?  @map("read_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, userId, createdAt])
+  @@map("notifications")
 }
 
 model FxSnapshot {

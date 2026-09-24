@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { GlobalSearch } from "@/components/GlobalSearch";
+import { NotifyBell } from "@/components/NotifyBell";
 
 const nav = [
   { href: "/flow", label: "Цепочка" },
@@ -13,6 +15,7 @@ const nav = [
   { href: "/log", label: "Журнал" },
   { href: "/fields", label: "Поля" },
   { href: "/team", label: "Команда" },
+  { href: "/settings", label: "Настройки" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -80,6 +83,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <PasswordBox />
       </aside>
       <div className="min-w-0">
+        <header className="flex flex-wrap items-center gap-3 border-b border-line bg-paper px-6 py-3">
+          <GlobalSearch />
+          <NotifyBell />
+        </header>
         {urgent > 0 && (
           <Link href="/inbox?filter=urgent" className="block border-b border-urgent/40 bg-urgent/15 px-6 py-2 text-sm">
             Срочно: {urgent} — дефолт модели, сбой AI, лимит ИИ или клиент просит человека. Открыть входящие.

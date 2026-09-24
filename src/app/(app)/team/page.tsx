@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 export default function TeamPage() {
-  const [members, setMembers] = useState<{ id: string; role: string; name: string; email: string }[]>([]);
+  const [members, setMembers] = useState<{ id: string; userId: string; role: string; name: string; email: string; telegram?: string }[]>([]);
   const [invites, setInvites] = useState<{ id: string; url: string; email: string | null }[]>([]);
   const [routingMode, setRoutingMode] = useState<"pool" | "round_robin">("pool");
   const [role, setRole] = useState("manager");
@@ -83,7 +83,28 @@ export default function TeamPage() {
       <ul className="mt-6 space-y-2">
         {members.map((m) => (
           <li key={m.id} className="rounded-xl border border-line bg-slot px-4 py-3">
-            {m.name} · {m.email} · {m.role === "owner" ? "владелец" : "менеджер"}
+            <p>
+              {m.name} · {m.email} · {m.role === "owner" ? "владелец" : "менеджер"}
+            </p>
+            <label className="mt-2 flex items-center gap-2 text-sm">
+              Telegram
+              <input
+                className="flex-1 rounded border border-line bg-paper px-2 py-1"
+                placeholder="chat id или @username"
+                defaultValue={m.telegram || ""}
+                onBlur={async (e) => {
+                  const telegram = e.target.value.trim();
+                  const res = await fetch("/api/team", {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ memberId: m.id, telegram }),
+                  });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) setMsg(data.error || "Ошибка");
+                  else setMsg("Telegram сохранён");
+                }}
+              />
+            </label>
           </li>
         ))}
       </ul>

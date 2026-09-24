@@ -47,7 +47,9 @@ export default function LoginPage() {
           </Link>
         </p>
       )}
-      {box && <p className="mt-6 text-sm text-muted">Режим коробки: регистрация закрыта.</p>}
+      {box && (
+        <p className="mt-6 text-sm text-muted">Режим коробки: данные на этой машине. Публичная регистрация выключена.</p>
+      )}
     </main>
   );
 }

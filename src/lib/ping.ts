@@ -73,6 +73,7 @@ export async function runFollowups(workspaceId?: string) {
   let sent = 0;
   let reminded = 0;
   for (const ws of workspaces) {
+    if (!ws.pingEnabled) continue;
     const convs = await prisma.conversation.findMany({
       where: { workspaceId: ws.id, status: { not: "closed" } },
       include: {

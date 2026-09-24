@@ -2,7 +2,8 @@
 /**
  * Приёмка фазы 2–3: промт в UI, пинг после SLA, маршрутизация, опрос Telegram;
  * почта, несколько линейных цепочек, curl модели, CSV;
- * воронка/KPI, RAG-lite, PDF, DLP, 152-ФЗ, курс ЦБ, статусы, галерея, IMAP.
+ * воронка/KPI, RAG-lite, PDF, DLP, 152-ФЗ, курс ЦБ, статусы, галерея, IMAP;
+ * поиск, колокольчик, настройки, склейка контактов, коробка.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
@@ -607,6 +608,85 @@ async function main() {
   assert(tickImap.data.imap?.skipped === true || typeof tickImap.data.imap?.ingested === "number" || tickImap.data.imap?.error, "imap field on tick");
   assert(ownerLead.data.consentAt || ownerLead.data.contact?.consentAt, "form1 consent stored");
 
+  const notes = await req("/api/notifications", { cookie });
+  assert(notes.status === 200, "notifications list");
+  assert(notes.data.unread >= 1, "bell unread on new lead");
+  assert(
+    (notes.data.items || []).some((n) => n.type === "lead_new" && /Новый/.test(n.title + n.body)),
+    "in-app new lead notice",
+  );
+  const markNote = await req("/api/notifications", { method: "PATCH", cookie, json: { all: true } });
+  assert(markNote.status === 200 && markNote.data.unread === 0, "mark all notifications read");
+
+  const found = await req(`/api/search?q=${encodeURIComponent("Клиент RR1")}`, { cookie });
+  assert(found.status === 200, "search");
+  assert((found.data.contacts || []).some((c) => c.title === "Клиент RR1"), "search contact by name");
+  assert((found.data.leads || []).some((l) => l.title === "Клиент RR1"), "search lead by name");
+  const byPhone = await req(`/api/search?q=${phone1}`, { cookie });
+  assert((byPhone.data.contacts || []).some((c) => c.href.includes(form1.data.contactId)), "search by phone");
+
+  const settingsGet = await req("/api/workspace", { cookie });
+  assert(settingsGet.status === 200, "settings get");
+  assert(typeof settingsGet.data.pingEnabled === "boolean", "pingEnabled on workspace");
+  assert(settingsGet.data.slaMinutes >= 0, "slaMinutes on workspace");
+  assert(settingsGet.data.routingMode === "pool" || settingsGet.data.routingMode === "round_robin", "routing on settings");
+  assert(typeof settingsGet.data.dataOnThisMachine === "boolean", "box flag");
+  assert(settingsGet.data.deployMode === "saas" || settingsGet.data.deployMode === "box", "deployMode on settings");
+  if (settingsGet.data.deployMode === "box") {
+    assert(settingsGet.data.dataOnThisMachine === true, "box data on this machine");
+    assert(settingsGet.data.publicRegistration === false, "box register off");
+  }
+  const settingsPatch = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { slaMinutes: 20, pingEnabled: false, routingMode: "round_robin", defaultModel: "mock:ok" },
+  });
+  assert(settingsPatch.status === 200 && settingsPatch.data.slaMinutes === 20, "settings sla");
+  assert(settingsPatch.data.pingEnabled === false, "settings ping off");
+  assert(settingsPatch.data.routingMode === "round_robin", "settings routing");
+  const settingsBack = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { slaMinutes: 15, pingEnabled: true, routingMode: "pool" },
+  });
+  assert(settingsBack.status === 200 && settingsBack.data.pingEnabled === true, "settings ping on");
+
+  const tgSave = await req("/api/team", { method: "PATCH", cookie, json: { telegram: "123456789" } });
+  assert(tgSave.status === 200 && tgSave.data.member.telegram === "123456789", "member telegram profile");
+
+  const phoneDupA = phone();
+  const phoneDupB = phone();
+  const dupA = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Дубль А", phone: phoneDupA },
+  });
+  const dupB = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Дубль Б", phone: phoneDupB },
+  });
+  assert(dupA.status === 200 && dupB.status === 200, "two contacts for merge");
+  const patchB = await req(`/api/contacts/${dupB.data.contactId}`, {
+    method: "PATCH",
+    cookie,
+    json: { phone: phoneDupA },
+  });
+  assert(patchB.status === 200, "align phones for duplicate");
+  const cardA = await req(`/api/contacts/${dupA.data.contactId}`, { cookie });
+  assert((cardA.data.duplicates || []).some((d) => d.id === dupB.data.contactId), "duplicate suggestion by phone");
+  const merged = await req(`/api/contacts/${dupA.data.contactId}/merge`, {
+    method: "POST",
+    cookie,
+    json: { otherId: dupB.data.contactId },
+  });
+  assert(merged.status === 200 && merged.data.ok === true, "merge contacts");
+  const gone = await req(`/api/contacts/${dupB.data.contactId}`, { cookie });
+  assert(gone.status === 404, "dropped contact gone");
+  const kept = await req(`/api/contacts/${dupA.data.contactId}`, { cookie });
+  assert(kept.status === 200, "kept contact");
+  assert(!(kept.data.duplicates || []).some((d) => d.id === dupB.data.contactId), "merged duplicate gone");
+  const searchCargo = await req(`/api/search?q=${encodeURIComponent("модул")}`, { cookie });
+  assert(searchCargo.status === 200, "search cargo text");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -615,6 +695,7 @@ async function main() {
     phase3: "email+flows+model-raw+csv",
     phase4: "funnel+rag+pdf+dlp",
     phase5: "152+cbr+status+photos+imap",
+    phase6: "search+bell+settings+merge+box",
   });
 }
 
