@@ -48,13 +48,15 @@ export default function PublicFormPage() {
         <input name="phone" required placeholder="Телефон" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
         <button className="w-full rounded-xl bg-accent px-4 py-2 text-ink">Оставить контакт</button>
       </form>
-      {chatUrl && (
-        <p className="mt-4">
+      <p className="mt-4">
+        {chatUrl ? (
           <a className="link" href={chatUrl}>
             Написать в чат
           </a>
-        </p>
-      )}
+        ) : (
+          <span className="text-sm text-muted">Написать в чат — откройте виджет на сайте или Telegram.</span>
+        )}
+      </p>
       {status && <p className="ok-banner mt-4 rounded px-3 py-2 text-sm">{status}</p>}
       {error && <p className="mt-4 text-sm text-urgent">{error}</p>}
     </main>
