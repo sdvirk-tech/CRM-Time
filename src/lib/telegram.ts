@@ -48,6 +48,13 @@ export async function telegramSetWebhook(token: string, url: string) {
   return { ok: Boolean(data.ok), description: data.description || (data.ok ? "Webhook установлен" : "setWebhook не ок"), url };
 }
 
+export async function telegramFileUrl(token: string, fileId: string): Promise<string | null> {
+  const res = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${encodeURIComponent(fileId)}`);
+  const data = (await res.json()) as { ok?: boolean; result?: { file_path?: string } };
+  if (!data.ok || !data.result?.file_path) return null;
+  return `https://api.telegram.org/file/bot${token}/${data.result.file_path}`;
+}
+
 export async function channelToken(channelId: string): Promise<string | null> {
   const ch = await prisma.channel.findUnique({ where: { id: channelId } });
   if (!ch?.secretsEnc) return null;

@@ -28,12 +28,18 @@ export default function ContactPage() {
     leads: { id: string; status: string; urgent: boolean }[];
     conversations: { id: string; channel: { type: string }; messages?: Msg[] }[];
     fieldValues: { id: string; value: string; field: { name: string; key: string } }[];
+    consentAt?: string | null;
+    fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
+    photos?: { href: string; kind: string; label: string }[];
   };
 
   return (
     <main className="p-8">
       <h1 className="text-3xl font-semibold">{contact.name}</h1>
       <p className="mt-2 text-muted">{contact.phone || "телефон не указан"}</p>
+      {contact.consentAt && (
+        <p className="mt-1 text-sm text-muted">Согласие 152-ФЗ: {new Date(contact.consentAt).toLocaleString("ru-RU")}</p>
+      )}
       <p className="mt-3">
         <a className="link" href={`/api/contacts/${contact.id}?format=csv`}>
           Скачать CSV карточки
@@ -54,7 +60,14 @@ export default function ContactPage() {
           ))}
         </ul>
       </section>
-      <CargoCard name={contact.name} phone={contact.phone} values={contact.fieldValues} />
+      <CargoCard
+        name={contact.name}
+        phone={contact.phone}
+        values={contact.fieldValues}
+        fx={contact.fx}
+        photos={contact.photos}
+        consentAt={contact.consentAt}
+      />
       <section className="mt-8">
         <h2 className="text-xl font-semibold">Лиды</h2>
         <ul className="mt-2 space-y-1">

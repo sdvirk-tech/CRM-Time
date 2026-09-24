@@ -179,10 +179,13 @@ export async function runModel(opts: {
     const ragHit = opts.system.includes("RAG_CHUNK_MARKER") ? "RAG_CHUNK_MARKER. " : "";
     const tag = isB ? "модель B. " : "";
     const sales = /Ты МАКС|код ТН ВЭД|карточка/i.test(opts.system);
+    const cbrLine = (opts.system.match(/Курс ЦБ РФ[^\n]+/) || [])[0];
     if (sales) {
       if (opts.system.includes("COMMERCIAL_DRAFT=1") || /карточка собрана/i.test(opts.system)) {
         const cargo = extractCargoFromText(opts.user);
-        return sanitizeModelText(`<think>не клиенту</think>${byBook}${ragHit}${tag}${formatCommercialDraft(cargo)}`);
+        return sanitizeModelText(
+          `<think>не клиенту</think>${byBook}${ragHit}${tag}${formatCommercialDraft(cargo, cbrLine)}`,
+        );
       }
       const byCardAsk = opts.system.match(/Спроси следующее одним предложением:\s*([^\n]+)/);
       if (byCardAsk && /Нет:/.test(opts.system) && !/Всё собрано/.test(opts.system)) {
@@ -191,7 +194,9 @@ export async function runModel(opts: {
       const cargo = extractCargoFromText(opts.user);
       const missing = missingCardSlots(cargo);
       if (/Всё собрано/.test(opts.system) || missing.length === 0) {
-        return sanitizeModelText(`<think>не клиенту</think>${byBook}${ragHit}${tag}${formatCommercialDraft(cargo)}`);
+        return sanitizeModelText(
+          `<think>не клиенту</think>${byBook}${ragHit}${tag}${formatCommercialDraft(cargo, cbrLine)}`,
+        );
       }
       if (!cargo.cargo && !cargo.weight && !cargo.route && missing.includes("cargo")) {
         return sanitizeModelText(

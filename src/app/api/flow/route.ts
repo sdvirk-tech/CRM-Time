@@ -181,6 +181,10 @@ function formSnippet(key: string, chatKey?: string) {
   <div style="background:#C5E2FF;color:#1a1a1a;padding:8px 12px;margin:-16px -16px 12px">Имя и телефон</div>
   <input name="name" placeholder="Имя" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
   <input name="phone" placeholder="Телефон" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
+  <label style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:13px">
+    <input name="consent" type="checkbox" value="yes" required>
+    <span>Согласен на обработку персональных данных (152-ФЗ)</span>
+  </label>
   <button type="submit" style="background:#99CCFF;color:#1a1a1a;border:0;padding:10px 16px;font-family:inherit">Оставить контакт</button>
   <p style="margin:12px 0 0;font-size:13px"><a href="${chat}" style="color:#1a1a1a">Написать в чат</a></p>
 </form>`;

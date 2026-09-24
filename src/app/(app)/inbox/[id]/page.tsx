@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { channelLabel, leadStatusLabel, urgentReasonLabel } from "@/lib/labels";
 import { CargoCard } from "@/components/CargoCard";
+import { LeadQuickStatus } from "@/components/LeadQuickStatus";
 
 type Msg = { id: string; direction: string; body: string; aiError: string | null; createdAt: string };
 type Operator = { userId: string; name: string; role: string };
@@ -23,12 +24,15 @@ type Data = {
     id: string;
     name: string;
     phone: string | null;
+    consentAt?: string | null;
     leads: { id: string }[];
     fieldValues?: FieldVal[];
   };
   channel: { type: string; name: string };
   messages: Msg[];
   leads?: { id: string; status: string }[];
+  fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
+  photos?: { href: string; kind: string; label: string }[];
 };
 
 export default function ConversationPage() {
@@ -118,8 +122,18 @@ export default function ConversationPage() {
         </p>
         {msg && <p className="ok-banner mt-3 inline-block rounded px-2 py-1 text-sm">{msg}</p>}
         {data.aiError && <p className="mt-3 rounded border border-urgent/40 bg-urgent/15 p-3 text-sm">{data.aiError}</p>}
-        {cardValues.length > 0 && (
-          <CargoCard name={data.contact.name} phone={data.contact.phone} values={cardValues} />
+        {(cardValues.length > 0 || (data.photos?.length ?? 0) > 0) && (
+          <CargoCard
+            name={data.contact.name}
+            phone={data.contact.phone}
+            values={cardValues}
+            fx={data.fx}
+            photos={data.photos}
+            leadId={leadId}
+            leadStatus={leadStatus}
+            onStatus={load}
+            consentAt={data.contact.consentAt}
+          />
         )}
         {leadId && (
           <p className="mt-2 text-sm">
@@ -130,6 +144,7 @@ export default function ConversationPage() {
             {" · "}диалог привязан, писать можно здесь
           </p>
         )}
+        {leadId && <LeadQuickStatus leadId={leadId} status={leadStatus} onDone={load} />}
         <ol className="mt-6 space-y-3">
           {data.messages.map((m) => (
             <li

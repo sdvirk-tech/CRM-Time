@@ -16,12 +16,24 @@ function assert(cond, msg) {
 
 async function req(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
-  if (opts.json) headers["Content-Type"] = "application/json";
+  let jsonBody = opts.json;
+  if (jsonBody) {
+    if (
+      opts.method === "POST" &&
+      typeof jsonBody === "object" &&
+      jsonBody &&
+      jsonBody.consent === undefined &&
+      (path.includes("/ingest/web-form/") || path.includes("/ingest/web-chat/"))
+    ) {
+      jsonBody = { consent: true, ...jsonBody };
+    }
+    headers["Content-Type"] = "application/json";
+  }
   if (opts.cookie) headers.Cookie = opts.cookie;
   const res = await fetch(BASE + path, {
     method: opts.method || "GET",
     headers,
-    body: opts.json ? JSON.stringify(opts.json) : opts.body,
+    body: jsonBody ? JSON.stringify(jsonBody) : opts.body,
     redirect: "manual",
   });
   const text = await res.text();
@@ -167,6 +179,7 @@ async function main() {
   assert(String(formCh.snippet).includes("Calibri"), "widget Calibri");
   assert(String(formCh.snippet).includes("color:#1a1a1a"), "widget dark text");
   assert(String(formCh.snippet).includes("Написать в чат"), "short form chat link");
+  assert(String(formCh.snippet).includes("152-ФЗ"), "snippet 152 consent");
   assert(!/tnved|Incoterms|контейнер/i.test(String(formCh.snippet)), "snippet is not VED form");
   assert(
     (flow.data.models || []).some((m) => m.provider === "mock" && m.model === "ok-b"),
@@ -213,6 +226,7 @@ async function main() {
   assert((contactCard.data.conversations || []).length >= 1, "contact conversations");
   assert(contactCard.data.name === "Клиент А", "short form stores name");
   assert(contactCard.data.phone === phoneA, "short form stores phone");
+  assert(contactCard.data.consentAt, "152 consent timestamp on contact");
   r = await req(`/api/contacts/${contactA}`, { method: "PATCH", cookie, json: { phone: "abc" } });
   assert(r.status === 400, "contact invalid phone");
 
@@ -221,12 +235,20 @@ async function main() {
   const formRaw = formHtml.data?.raw || JSON.stringify(formHtml.data);
   assert(/Имя и телефон/.test(formRaw), "short form title");
   assert(/Написать в чат/.test(formRaw), "short form chat CTA");
+  assert(/152-ФЗ/.test(formRaw), "152 consent checkbox on form");
   assert(!/Оставить заявку/.test(formRaw), "rejected long VED form title");
   assert(!/name="tnved"/.test(formRaw), "no tnved input");
   assert(!/name="incoterms"/.test(formRaw), "no incoterms input");
 
   r = await req(`/api/channels/${formCh.id}/test`, { method: "POST", cookie, json: {} });
   assert(r.status === 200 && r.data.ok === true && r.data.leadId, "canvas form test " + JSON.stringify(r.data));
+
+  const noConsentPhone = "7999102" + String(Math.floor(1000 + Math.random() * 8999));
+  r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Без согласия", phone: noConsentPhone, consent: false },
+  });
+  assert(r.status === 400 && /152/.test(String(r.data.error || "")), "form without consent blocked");
 
   r = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
     method: "POST",
@@ -547,6 +569,11 @@ async function main() {
   const flowChat = await req("/api/flow", { cookie });
   const chatCh = flowChat.data.channels.find((c) => c.type === "web_chat");
   assert(chatCh, "web chat channel");
+  r = await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: "no-consent-" + id, text: "привет", consent: false },
+  });
+  assert(r.status === 400 && /152/.test(String(r.data.error || "")), "chat without consent blocked");
   assert(String(chatCh.snippet).includes("#F2F2F2"), "chat snippet paper");
   assert(String(chatCh.snippet).includes("#99CCFF"), "chat snippet accent");
   assert(String(chatCh.chatUrl).includes("/c/"), "chat url");
@@ -692,6 +719,10 @@ async function main() {
   }
   assert(missMap.route === "АВИА", "follow-up АВИА");
   assert(/https?:\/\//.test(missMap.cargo || "") && /фото/i.test(missMap.cargo || ""), "link+photo in cargo");
+  assert(
+    (missLead.data.photos || []).some((p) => p.kind === "url" || /mod\.jpg/.test(p.href || "")),
+    "photo gallery on cargo card",
+  );
   const missPoll2 = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=${missSid}`);
   assert(
     !(missPoll2.data.messages || []).some((m) => m.direction === "outbound" && /100% фрахта|Черновик менеджеру/i.test(m.body)),
@@ -722,6 +753,10 @@ async function main() {
   assert(
     (convPhoto.data.messages || []).some((m) => m.direction === "inbound" && /file_id:AgAC-test-file-id/.test(m.body)),
     "telegram file_id stored in chat",
+  );
+  assert(
+    (convPhoto.data.photos || []).some((p) => p.kind === "telegram"),
+    "telegram photo in gallery",
   );
 
   const cargoPhone = "7999666" + String(Math.floor(1000 + Math.random() * 8999));
@@ -754,6 +789,11 @@ async function main() {
   assert(/октябр/i.test(String(cargoMap.eta || "")), "cargo eta " + cargoMap.eta);
   const cargoLead = await req(`/api/leads/${r.data.leadId}`, { cookie });
   assert(cargoLead.data.status === "new", "complete chat lead is Новый");
+  assert(cargoLead.data.fx, "cbr rates on lead card");
+  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "qualified" } });
+  assert(r.status === 200 && r.data.status === "qualified", "one-click qualified from card");
+  r = await req(`/api/leads/${leadA}`, { method: "PATCH", cookie, json: { status: "rejected" } });
+  assert(r.status === 200 && r.data.status === "rejected", "one-click rejected from card");
   const leadMap = Object.fromEntries(
     (cargoLead.data.fieldValues || []).map((v) => [v.field.key, v.value]),
   );
@@ -769,6 +809,9 @@ async function main() {
   const cargoConv = await req(`/api/conversations/${r.data.conversationId}`, { cookie });
   const cargoDraft = [...(cargoConv.data.messages || [])].reverse().find((m) => m.direction === "draft");
   assert(cargoDraft && /100% фрахта в ТС/i.test(cargoDraft.body), "АВИА duty hint in manager draft");
+  if (cargoLead.data.fx?.usd) {
+    assert(/Курс ЦБ РФ/.test(String(cargoDraft.body)), "cbr line in commercial draft");
+  }
   assert(/Итоговые данные/i.test(cargoDraft.body), "draft lists итоговые данные for manager");
   assert((cargoConv.data.contact.fieldValues || []).some((v) => v.field.key === "weight" && /12/.test(v.value)), "inbox shows filled card");
   const inboxCard = await req("/api/inbox", { cookie });

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { jsonError } from "@/lib/auth";
 import { ingestInbound } from "@/lib/pipeline";
 import { normalizePhone, validateField } from "@/lib/validators";
+import { acceptedConsent, CONSENT_ERROR, contactHasConsent } from "@/lib/consent";
 
 type Ctx = { params: Promise<{ key: string }> };
 
@@ -59,6 +60,15 @@ export async function POST(req: Request, ctx: Ctx) {
     ...Object.entries(fields).map(([k, v]) => `${k}: ${v}`),
   ].filter(Boolean);
 
+  const consented = acceptedConsent(payload.consent);
+  const had = await contactHasConsent({
+    workspaceId: channel.workspaceId,
+    source: "web_form",
+    externalId: phone || "",
+    phone,
+  });
+  if (!consented && !had) return jsonError(CONSENT_ERROR, 400);
+
   const result = await ingestInbound({
     workspaceId: channel.workspaceId,
     channelId: channel.id,
@@ -68,6 +78,7 @@ export async function POST(req: Request, ctx: Ctx) {
     phone: phone || undefined,
     body: bodyParts.join("\n") || "Заявка с формы",
     fields,
+    consentAt: consented ? new Date() : undefined,
   });
 
   if (contentType.includes("application/json")) {

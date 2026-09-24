@@ -46,6 +46,10 @@ export default function PublicFormPage() {
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
         <input name="name" required placeholder="Имя" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
         <input name="phone" required placeholder="Телефон" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
+        <label className="flex items-start gap-2 text-sm">
+          <input name="consent" type="checkbox" required value="yes" className="mt-1" />
+          <span>Согласен на обработку персональных данных (152-ФЗ)</span>
+        </label>
         <button className="w-full rounded-xl bg-accent px-4 py-2 text-ink">Оставить контакт</button>
       </form>
       <p className="mt-4">

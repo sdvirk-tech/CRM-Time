@@ -344,11 +344,12 @@ export function withCardState(base: string, snap: CargoExtract, missing: string[
   return `${base}\n\n--- карточка ---\nЕсть: ${filled || "пока ничего"}\nНет: ${missing.join(", ")}\nСпроси следующее одним предложением: ${nextAsk(missing)}\nПустые поля не записывай. Без JSON.\n`;
 }
 
-export function withCommercialDraft(base: string, snap: CargoExtract) {
-  return `${base}\n\nCOMMERCIAL_DRAFT=1\n--- карточка собрана ---\n${formatItogo(snap)}\nНапиши черновик менеджеру: ориентир по маршруту ${snap.route || "—"} и намётки ТС/пошлины из знаний (авиа — 100% фрахта в ТС, море/ЖД — 50%, НДС 22%). Без рублей и итога, пока нет курса. Без JSON. Клиенту уйдёт только после кнопки «Отправить».\n`;
+export function withCommercialDraft(base: string, snap: CargoExtract, cbrLine?: string) {
+  const rate = cbrLine ? `${cbrLine}\n` : "";
+  return `${base}\n\nCOMMERCIAL_DRAFT=1\n--- карточка собрана ---\n${formatItogo(snap)}\n${rate}Напиши черновик менеджеру: ориентир по маршруту ${snap.route || "—"} и намётки ТС/пошлины из знаний (авиа — 100% фрахта в ТС, море/ЖД — 50%, НДС 22%). Строку курса ЦБ из блока выше повтори в черновике. Без итога в рублях, пока клиент не подтвердил курс. Без JSON. Клиенту уйдёт только после кнопки «Отправить».\n`;
 }
 
-export function formatCommercialDraft(snap: Partial<CargoExtract>): string {
+export function formatCommercialDraft(snap: Partial<CargoExtract>, cbrLine?: string): string {
   const route = snap.route || "";
   let hint = "Курс ЦБ или число клиента — без него в чат не ставлю ТС, пошлину и итог.";
   if (route === "АВИА") hint = "Авиа до аэропорта РФ: 100% фрахта в ТС. " + hint;
@@ -359,8 +360,11 @@ export function formatCommercialDraft(snap: Partial<CargoExtract>): string {
     "Черновик менеджеру — уйдёт клиенту после «Отправить».",
     formatItogo(snap),
     "",
+    cbrLine || "",
     hint,
     "НДС 22% с ТС+пошлина. Сбор от ТС по шкале. Не оферта.",
-  ].join("\n");
+  ]
+    .filter((l) => l !== "")
+    .join("\n");
 }
 

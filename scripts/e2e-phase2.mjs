@@ -2,7 +2,7 @@
 /**
  * Приёмка фазы 2–3: промт в UI, пинг после SLA, маршрутизация, опрос Telegram;
  * почта, несколько линейных цепочек, curl модели, CSV;
- * воронка/KPI, RAG-lite, PDF карточки, маскировка телефона/почты для менеджера.
+ * воронка/KPI, RAG-lite, PDF, DLP, 152-ФЗ, курс ЦБ, статусы, галерея, IMAP.
  * Сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { dirname, join } from "node:path";
@@ -18,12 +18,23 @@ function assert(cond, msg) {
 
 async function req(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
-  if (opts.json) headers["Content-Type"] = "application/json";
+  let jsonBody = opts.json;
+  if (jsonBody) {
+    if (
+      opts.method === "POST" &&
+      typeof jsonBody === "object" &&
+      jsonBody.consent === undefined &&
+      (path.includes("/ingest/web-form/") || path.includes("/ingest/web-chat/"))
+    ) {
+      jsonBody = { consent: true, ...jsonBody };
+    }
+    headers["Content-Type"] = "application/json";
+  }
   if (opts.cookie) headers.Cookie = opts.cookie;
   const res = await fetch(BASE + path, {
     method: opts.method || "GET",
     headers,
-    body: opts.json ? JSON.stringify(opts.json) : opts.body,
+    body: jsonBody ? JSON.stringify(jsonBody) : opts.body,
     redirect: "manual",
   });
   const text = await res.text();
@@ -587,6 +598,15 @@ async function main() {
   const contactPdf = await req(`/api/contacts/${ownerLead.data.contactId}?format=pdf`, { cookie });
   assert((contactPdf.data?.raw || "").startsWith("%PDF"), "contact pdf");
 
+  r = await req(`/api/leads/${form1.data.leadId}`, { method: "PATCH", cookie, json: { status: "qualified" } });
+  assert(r.status === 200 && r.data.status === "qualified", "phase5 qualify from card api");
+  const fx = await req("/api/fx", { cookie });
+  assert(fx.status === 200, "fx endpoint");
+  const tickImap = await req("/api/ops/tick", { method: "POST", cookie, json: {} });
+  assert(tickImap.status === 200, "tick with imap skip");
+  assert(tickImap.data.imap?.skipped === true || typeof tickImap.data.imap?.ingested === "number" || tickImap.data.imap?.error, "imap field on tick");
+  assert(ownerLead.data.consentAt || ownerLead.data.contact?.consentAt, "form1 consent stored");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -594,6 +614,7 @@ async function main() {
     poll: tgAfter.pollOffset,
     phase3: "email+flows+model-raw+csv",
     phase4: "funnel+rag+pdf+dlp",
+    phase5: "152+cbr+status+photos+imap",
   });
 }
 

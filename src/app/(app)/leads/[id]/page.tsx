@@ -14,10 +14,12 @@ export default function LeadPage() {
     source: string;
     urgent: boolean;
     comment: string;
-    contact: { id: string; name: string; phone: string | null };
+    contact: { id: string; name: string; phone: string | null; consentAt?: string | null };
     assignee: { name: string } | null;
     conversation: { id: string } | null;
     fieldValues?: { value: string; field: { key: string; name: string } }[];
+    fx?: { asOfLabel?: string; usd?: string; cny?: string; eur?: string };
+    photos?: { href: string; kind: string; label: string }[];
   } | null>(null);
   const [comment, setComment] = useState("");
 
@@ -79,7 +81,17 @@ export default function LeadPage() {
           PDF карточки
         </a>
       </p>
-      <CargoCard name={lead.contact.name} phone={lead.contact.phone} values={lead.fieldValues} />
+      <CargoCard
+        name={lead.contact.name}
+        phone={lead.contact.phone}
+        values={lead.fieldValues}
+        fx={lead.fx}
+        photos={lead.photos}
+        leadId={lead.id}
+        leadStatus={lead.status}
+        onStatus={load}
+        consentAt={lead.contact.consentAt}
+      />
       <textarea className="mt-6 w-full max-w-xl rounded-2xl border border-line bg-slot p-3" rows={5} value={comment} onChange={(e) => setComment(e.target.value)} />
       <div className="mt-4 flex flex-wrap gap-2">
         <button onClick={() => save()} className="rounded-xl border border-line px-4 py-2">

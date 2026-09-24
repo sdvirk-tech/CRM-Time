@@ -51,6 +51,7 @@ export async function POST(req: Request, ctx: Ctx) {
         phone: "79990000000",
         body: "Имя: Тестовая заявка\nТелефон: 79990000000\nКомментарий: проверка цепочки",
         fields: {},
+        consentAt: new Date(),
       });
       return NextResponse.json({ ok: true, ...result });
     }

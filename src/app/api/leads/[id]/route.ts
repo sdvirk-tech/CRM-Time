@@ -7,6 +7,8 @@ import { csvBody } from "@/lib/csv";
 import { leadStatusLabel, sourceLabel } from "@/lib/labels";
 import { cargoCardPdf } from "@/lib/pdf";
 import { dlpLead, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
+import { getCbrRates } from "@/lib/cbr";
+import { extractPhotoRefs } from "@/lib/photos";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -72,7 +74,13 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
-    return NextResponse.json(dlpLead(session.role, lead));
+    return NextResponse.json({
+      ...dlpLead(session.role, lead),
+      fx: await getCbrRates(),
+      photos: extractPhotoRefs(
+        [lead.comment, ...values.map((v) => v.value)].join("\n"),
+      ),
+    });
   });
 }
 
@@ -87,6 +95,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");
+    const existing = await prisma.lead.findFirst({ where: { id, workspaceId: session.workspaceId } });
+    if (!existing) return jsonError("Лид не найден", 404);
     const lead = await prisma.lead.update({
       where: { id },
       data: parsed.data,

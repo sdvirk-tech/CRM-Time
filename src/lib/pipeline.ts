@@ -27,6 +27,7 @@ import {
   wantsManager,
 } from "./dialog";
 import { loadKnowledgeForPrompt } from "./rag";
+import { formatCbrLine, getCbrRates } from "./cbr";
 
 export type IngestInput = {
   workspaceId: string;
@@ -40,6 +41,7 @@ export type IngestInput = {
   fields?: Record<string, string>;
   eventKey?: string;
   photoNote?: string;
+  consentAt?: Date;
 };
 
 function explicitBinding(provider?: string | null, model?: string | null) {
@@ -95,11 +97,12 @@ export async function findOrCreateContact(input: IngestInput) {
   });
   if (byExternal) {
     const contact = await prisma.contact.findUniqueOrThrow({ where: { id: byExternal.contactId } });
-    if (input.phone && !contact.phone) {
-      await prisma.contact.update({ where: { id: contact.id }, data: { phone: input.phone } });
-    }
-    if (input.name && contact.name === "Без имени") {
-      await prisma.contact.update({ where: { id: contact.id }, data: { name: input.name } });
+    const patch: { phone?: string; name?: string; consentAt?: Date } = {};
+    if (input.phone && !contact.phone) patch.phone = input.phone;
+    if (input.name && contact.name === "Без имени") patch.name = input.name;
+    if (input.consentAt && !contact.consentAt) patch.consentAt = input.consentAt;
+    if (Object.keys(patch).length) {
+      await prisma.contact.update({ where: { id: contact.id }, data: patch });
     }
     return prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
   }
@@ -119,6 +122,10 @@ export async function findOrCreateContact(input: IngestInput) {
           username: input.username,
         },
       });
+      if (input.consentAt && !byPhone.consentAt) {
+        await prisma.contact.update({ where: { id: byPhone.id }, data: { consentAt: input.consentAt } });
+        return prisma.contact.findUniqueOrThrow({ where: { id: byPhone.id } });
+      }
       return byPhone;
     }
   }
@@ -129,6 +136,7 @@ export async function findOrCreateContact(input: IngestInput) {
       name: input.name || input.username || "Без имени",
       phone: input.phone,
       comment: sanitizeModelText(input.body).slice(0, 500),
+      consentAt: input.consentAt,
     },
   });
   await prisma.contactChannel.create({
@@ -566,8 +574,10 @@ export async function ingestInbound(input: IngestInput) {
   if (draft && !humanOwns) {
     const binding = draft.explicit ?? draft.fallback ?? { provider: "mock", model: "ok" };
     try {
+      const fx = cardComplete ? await getCbrRates() : null;
+      const cbrLine = fx ? formatCbrLine(fx) : "";
       const system = cardComplete
-        ? withCommercialDraft(withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles), snap)
+        ? withCommercialDraft(withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles), snap, cbrLine)
         : withCardState(
             withKnowledge(draft.prompt || defaultProcessPrompt("draft_reply"), articles),
             snap,

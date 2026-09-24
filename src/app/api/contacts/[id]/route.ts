@@ -8,6 +8,8 @@ import { csvBody } from "@/lib/csv";
 import { channelLabel, leadStatusLabel } from "@/lib/labels";
 import { cargoCardPdf } from "@/lib/pdf";
 import { dlpContact, maskEmailIf, maskPhoneIf, maskPii, shouldMask } from "@/lib/dlp";
+import { getCbrRates } from "@/lib/cbr";
+import { extractPhotoRefs } from "@/lib/photos";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -85,7 +87,17 @@ export async function GET(req: Request, ctx: Ctx) {
         },
       });
     }
-    return NextResponse.json(dlpContact(session.role, contact));
+    return NextResponse.json({
+      ...dlpContact(session.role, contact),
+      fx: await getCbrRates(),
+      photos: extractPhotoRefs(
+        [
+          contact.comment,
+          ...contact.fieldValues.map((v) => v.value),
+          ...contact.conversations.flatMap((c) => (c.messages || []).map((m) => m.body)),
+        ].join("\n"),
+      ),
+    });
   });
 }
 

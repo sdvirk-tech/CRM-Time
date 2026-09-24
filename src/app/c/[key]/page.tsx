@@ -11,6 +11,8 @@ export default function PublicChatPage() {
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
+  const [consent, setConsent] = useState(false);
+  const [needsConsent, setNeedsConsent] = useState(true);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [status, setStatus] = useState("");
 
@@ -29,6 +31,7 @@ export default function PublicChatPage() {
     const res = await fetch(`/api/ingest/web-chat/${params.key}?sessionId=${encodeURIComponent(sessionId)}`);
     const data = await res.json();
     setMessages(data.messages ?? []);
+    if (typeof data.needsConsent === "boolean") setNeedsConsent(data.needsConsent);
   }
 
   useEffect(() => {
@@ -48,6 +51,10 @@ export default function PublicChatPage() {
   async function send(e: FormEvent) {
     e.preventDefault();
     if (!text.trim() && !photo) return;
+    if (needsConsent && !consent) {
+      setStatus("Нужно согласие на обработку персональных данных (152-ФЗ)");
+      return;
+    }
     let res: Response;
     if (photo) {
       const form = new FormData();
@@ -55,12 +62,13 @@ export default function PublicChatPage() {
       if (name) form.set("name", name);
       if (text.trim()) form.set("text", text.trim());
       form.set("photo", photo);
+      if (consent) form.set("consent", "yes");
       res = await fetch(`/api/ingest/web-chat/${params.key}`, { method: "POST", body: form });
     } else {
       res = await fetch(`/api/ingest/web-chat/${params.key}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, name: name || undefined, text }),
+        body: JSON.stringify({ sessionId, name: name || undefined, text, consent: consent || undefined }),
       });
     }
     const data = await res.json();
@@ -115,6 +123,12 @@ export default function PublicChatPage() {
           />
         </label>
         {photo && <span className="text-xs text-muted">{photo.name}</span>}
+        {needsConsent && (
+          <label className="flex w-full items-start gap-2 text-sm">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1" />
+            <span>Согласен на обработку персональных данных (152-ФЗ)</span>
+          </label>
+        )}
         <button className="rounded bg-accent px-4 py-2 text-ink">Отправить</button>
       </form>
       {status && <p className="mt-2 text-sm text-urgent">{status}</p>}

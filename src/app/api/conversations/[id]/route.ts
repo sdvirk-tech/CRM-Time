@@ -6,6 +6,8 @@ import { deliverOutbound } from "@/lib/outbound";
 import { logActivity } from "@/lib/activity";
 import { z } from "zod";
 import { dlpContact, dlpMessageBody } from "@/lib/dlp";
+import { extractPhotoRefs } from "@/lib/photos";
+import { getCbrRates } from "@/lib/cbr";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -33,6 +35,13 @@ export async function GET(_req: Request, ctx: Ctx) {
       contact: dlpContact(session.role, conv.contact),
       messages: conv.messages.map((m) => ({ ...m, body: dlpMessageBody(session.role, m.body) })),
       operators: members.map((m) => ({ userId: m.userId, name: m.user.name, role: m.role })),
+      fx: await getCbrRates(),
+      photos: extractPhotoRefs(
+        [
+          ...(conv.messages || []).map((m) => m.body),
+          ...(conv.contact.fieldValues || []).map((v) => v.value),
+        ].join("\n"),
+      ),
     });
   });
 }

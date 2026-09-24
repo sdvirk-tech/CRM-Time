@@ -155,6 +155,7 @@ model Contact {
   name        String
   phone       String?
   comment     String           @default("")
+  consentAt   DateTime?        @map("consent_at")
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -356,4 +357,15 @@ model Invite {
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   @@index([workspaceId])
   @@map("invites")
+}
+
+model FxSnapshot {
+  id        String   @id
+  asOf      DateTime @map("as_of")
+  usd       String
+  cny       String
+  eur       String
+  source    String   @default("cbr")
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+  @@map("fx_snapshots")
 }
