@@ -5,6 +5,7 @@ import { jsonError } from "@/lib/auth";
 import { inviteToken } from "@/lib/workspace";
 import { appUrl } from "@/lib/env";
 import { z } from "zod";
+import { asAvailability, availabilityLabel } from "@/lib/member-availability";
 
 export async function GET() {
   return withSession(async (session) => {
@@ -28,6 +29,8 @@ export async function GET() {
         name: m.user.name,
         email: m.user.email,
         telegram: m.telegram || "",
+        availability: asAvailability(m.availability),
+        availabilityLabel: availabilityLabel(m.availability),
       })),
       invites: invites.map((i) => ({
         id: i.id,
@@ -65,6 +68,7 @@ export async function PATCH(req: Request) {
         memberId: z.string().optional(),
         userId: z.string().optional(),
         telegram: z.string().max(80).optional(),
+        availability: z.enum(["online", "away", "busy"]).optional(),
       })
       .safeParse(await req.json().catch(() => null));
     if (!parsed.success) return jsonError("Некорректные данные");
@@ -83,10 +87,20 @@ export async function PATCH(req: Request) {
       return jsonError("Недостаточно прав", 403);
     }
     const telegram = parsed.data.telegram === undefined ? member.telegram : parsed.data.telegram.trim() || null;
+    const availability =
+      parsed.data.availability === undefined ? member.availability : asAvailability(parsed.data.availability);
     const updated = await prisma.workspaceMember.update({
       where: { id: member.id },
-      data: { telegram },
+      data: { telegram, availability },
     });
-    return NextResponse.json({ ok: true, member: { id: updated.id, telegram: updated.telegram || "" } });
+    return NextResponse.json({
+      ok: true,
+      member: {
+        id: updated.id,
+        telegram: updated.telegram || "",
+        availability: asAvailability(updated.availability),
+        availabilityLabel: availabilityLabel(updated.availability),
+      },
+    });
   });
 }

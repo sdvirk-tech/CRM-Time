@@ -97,6 +97,7 @@ model WorkspaceMember {
   userId      String    @map("user_id")
   role        String
   telegram    String?
+  availability String   @default("online")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

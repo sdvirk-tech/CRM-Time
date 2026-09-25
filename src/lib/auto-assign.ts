@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { isAssignable } from "./member-availability";
 
 const CHANNELS = new Set(["telegram", "web_form", "web_chat", "email"]);
 
@@ -42,7 +43,7 @@ export async function applyAutoAssignRules(workspaceId: string, leadId: string) 
     const member = await prisma.workspaceMember.findFirst({
       where: { workspaceId, userId: rule.assigneeId },
     });
-    if (!member) continue;
+    if (!member || !isAssignable(member.availability)) continue;
 
     if (lead.assigneeId === rule.assigneeId) return rule.assigneeId;
     await prisma.lead.update({

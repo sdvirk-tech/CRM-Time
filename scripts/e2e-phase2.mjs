@@ -1015,6 +1015,74 @@ async function main() {
   });
   assert(dupForce.status === 200 && dupForce.data.lead?.id, "dup override");
 
+  const exportPayload = exportRes.data;
+  const importDry = await req("/api/workspace/import", {
+    method: "POST",
+    cookie,
+    json: { payload: exportPayload, dryRun: true, mode: "merge" },
+  });
+  assert(importDry.status === 200 && importDry.data.dryRun === true, "json import dry-run");
+  assert(importDry.data.contacts.created >= 0, "json import dry counts");
+  const importMgr = await req("/api/workspace/import", { method: "POST", cookie: mgrACookie, json: { payload: exportPayload, dryRun: true } });
+  assert(importMgr.status === 403, "manager cannot json import");
+  const extraPhone = phone();
+  const importClone = structuredClone(exportPayload);
+  importClone.contacts = [
+    ...(importClone.contacts || []),
+    { id: "imp-" + id, name: "Импорт JSON", phone: extraPhone, comment: "phase11" },
+  ];
+  const importApply = await req("/api/workspace/import", {
+    method: "POST",
+    cookie,
+    json: { payload: importClone, dryRun: false, mode: "merge" },
+  });
+  assert(importApply.status === 200 && importApply.data.contacts.created >= 1, "json import apply contact");
+  const importedContact = await req(`/api/search?q=${encodeURIComponent("Импорт JSON")}`, { cookie });
+  assert(
+    (importedContact.data.contacts || []).some((h) => h.title?.includes("Импорт")),
+    "imported contact searchable",
+  );
+
+  const kanbanLead = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Канбан", phone: phone() },
+  });
+  assert(kanbanLead.status === 200 && kanbanLead.data.leadId, "kanban lead");
+  const kanbanMove = await req(`/api/leads/${kanbanLead.data.leadId}`, {
+    method: "PATCH",
+    cookie,
+    json: { status: "in_progress" },
+  });
+  assert(kanbanMove.status === 200 && kanbanMove.data.status === "in_progress", "kanban status patch");
+
+  const awayPatch = await req("/api/team", {
+    method: "PATCH",
+    cookie: mgrACookie,
+    json: { userId: mgrA.userId, availability: "away" },
+  });
+  assert(awayPatch.status === 200 && awayPatch.data.member?.availability === "away", "manager away");
+  await req("/api/workspace/auto-assign", {
+    method: "POST",
+    cookie,
+    json: { channel: "web_chat", assigneeId: mgrA.userId },
+  });
+  const awayPhone = phone();
+  const awayLead = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Пул away", phone: awayPhone },
+  });
+  assert(awayLead.status === 200 && awayLead.data.leadId, "away pool lead");
+  const awayRow = await req(`/api/leads/${awayLead.data.leadId}`, { cookie });
+  assert(awayRow.data.assignee?.id !== mgrA.userId, "away manager skipped in auto-assign");
+
+  const brandForm = await req(`/api/public-form/${formCh.publicKey}`);
+  assert(brandForm.status === 200 && brandForm.data.branding?.accentColor === "#99CCFF", "form widget accent");
+  assert(brandForm.data.branding?.workspaceTitle, "form widget title");
+  if (chatCh?.publicKey) {
+    const brandChat = await req(`/api/ingest/web-chat/${chatCh.publicKey}`);
+    assert(brandChat.status === 200 && brandChat.data.branding?.accentColor === "#99CCFF", "chat widget accent");
+  }
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -1028,6 +1096,7 @@ async function main() {
     phase8: "tasks+pin+csv+webhook+reject",
     phase9: "snooze+archive+bulk+hours+view-audit",
     phase10: "export+auto-assign+dup-hint+greeting+health-status",
+    phase11: "json-import+kanban+availability+widget-brand",
   });
 }
 

@@ -14,6 +14,8 @@ export default function PublicChatPage() {
   const [consent, setConsent] = useState(false);
   const [needsConsent, setNeedsConsent] = useState(true);
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [workspaceTitle, setWorkspaceTitle] = useState("");
+  const [accentColor, setAccentColor] = useState("#99CCFF");
   const [status, setStatus] = useState("");
 
   useEffect(() => {
@@ -32,6 +34,8 @@ export default function PublicChatPage() {
     const data = await res.json();
     setMessages(data.messages ?? []);
     if (typeof data.needsConsent === "boolean") setNeedsConsent(data.needsConsent);
+    if (data.branding?.workspaceTitle) setWorkspaceTitle(data.branding.workspaceTitle);
+    if (data.branding?.accentColor) setAccentColor(data.branding.accentColor);
   }
 
   useEffect(() => {
@@ -82,9 +86,13 @@ export default function PublicChatPage() {
     await load();
   }
 
+  const title = workspaceTitle || "CRM-Time";
+
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-8">
-      <p className="w-fit rounded bg-mist px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink">CRM-Time</p>
+      <p className="w-fit rounded px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink" style={{ backgroundColor: accentColor }}>
+        {title}
+      </p>
       <h1 className="mt-2 text-2xl font-semibold">Чат</h1>
       <input
         className="mt-4 rounded border border-line bg-slot px-3 py-2"
@@ -92,14 +100,15 @@ export default function PublicChatPage() {
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
-      <ol className="mt-4 max-h-[55vh] flex-1 space-y-2 overflow-auto rounded border border-accent bg-paper p-3">
+      <ol className="mt-4 max-h-[55vh] flex-1 space-y-2 overflow-auto rounded border bg-paper p-3" style={{ borderColor: accentColor }}>
         {visible.length === 0 && <li className="text-sm text-muted">Напишите — ответим здесь.</li>}
         {visible.map((m) => (
           <li
             key={m.id}
             className={`max-w-[90%] rounded px-3 py-2 text-sm ${
-              m.direction === "inbound" ? "ml-auto bg-accent text-ink" : "bg-mist text-ink"
+              m.direction === "inbound" ? "ml-auto text-ink" : "bg-mist text-ink"
             }`}
+            style={m.direction === "inbound" ? { backgroundColor: accentColor } : undefined}
           >
             {m.body}
           </li>
@@ -129,7 +138,9 @@ export default function PublicChatPage() {
             <span>Согласен на обработку персональных данных (152-ФЗ)</span>
           </label>
         )}
-        <button className="rounded bg-accent px-4 py-2 text-ink">Отправить</button>
+        <button type="submit" className="rounded px-4 py-2 text-ink" style={{ backgroundColor: accentColor }}>
+          Отправить
+        </button>
       </form>
       {status && <p className="mt-2 text-sm text-urgent">{status}</p>}
     </main>

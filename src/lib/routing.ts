@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { isAssignable } from "./member-availability";
 
 export type RoutingMode = "pool" | "round_robin";
 
@@ -13,9 +14,11 @@ export async function pickAssignee(workspaceId: string): Promise<string> {
     where: { workspaceId },
     orderBy: { createdAt: "asc" },
   });
-  const managers = members.filter((m) => m.role === "manager");
+  const managers = members.filter((m) => m.role === "manager" && isAssignable(m.availability));
   const owner = members.find((m) => m.role === "owner");
-  const pool = managers.length ? managers : owner ? [owner] : [];
+  let pool = managers.length ? managers : [];
+  if (!pool.length && owner && isAssignable(owner.availability)) pool = [owner];
+  if (!pool.length && owner) pool = [owner];
   if (!pool.length) throw new Error("В воркспейсе нет людей");
 
   if (asRoutingMode(ws.routingMode) === "round_robin") {

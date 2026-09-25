@@ -36,6 +36,9 @@ export default function LeadsPage() {
   const [bulkAssignee, setBulkAssignee] = useState("");
   const [bulkStatus, setBulkStatus] = useState("in_progress");
   const [bulkMsg, setBulkMsg] = useState("");
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [rejectModal, setRejectModal] = useState<{ id: string; reason: string } | null>(null);
+  const [kanbanMsg, setKanbanMsg] = useState("");
 
   async function load(filter = tag) {
     const q = filter ? `?tag=${encodeURIComponent(filter)}` : "";
@@ -64,6 +67,36 @@ export default function LeadsPage() {
   async function claim(id: string) {
     await fetch(`/api/leads/${id}/claim`, { method: "POST" });
     await load();
+  }
+
+  async function moveLead(id: string, status: string, rejectReason?: string) {
+    const body: Record<string, unknown> = { status };
+    if (status === "rejected") body.rejectReason = rejectReason || "не указана";
+    const res = await fetch(`/api/leads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setKanbanMsg(d.error || "Не удалось сменить статус");
+      return false;
+    }
+    setKanbanMsg("");
+    await load();
+    return true;
+  }
+
+  async function onDropColumn(colKey: string) {
+    if (!dragId) return;
+    const lead = items.find((l) => l.id === dragId);
+    setDragId(null);
+    if (!lead || lead.status === colKey || (colKey === "rejected" && lead.status === "lost")) return;
+    if (colKey === "rejected") {
+      setRejectModal({ id: lead.id, reason: "" });
+      return;
+    }
+    await moveLead(lead.id, colKey);
   }
 
   const picked = items.filter((l) => selected[l.id]).map((l) => l.id);
@@ -124,6 +157,8 @@ export default function LeadsPage() {
       <a className="mt-3 inline-block rounded border border-accent bg-paper px-3 py-2 text-sm" href="/api/leads?format=csv">
         Скачать CSV
       </a>
+      <p className="mt-2 text-sm text-muted">Перетащите карточку между колонками — статус сохранится на сервере.</p>
+      {kanbanMsg && <p className="mt-2 text-sm text-urgent">{kanbanMsg}</p>}
       <DayOverview stats={stats} onSla={load} />
       <section className="mt-6 max-w-3xl rounded-2xl border border-accent bg-mist p-4">
         <h2 className="text-lg font-semibold">Массовые действия</h2>
@@ -180,13 +215,32 @@ export default function LeadsPage() {
       </section>
       <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((col) => (
-          <section key={col.key} className="rounded-2xl border border-accent bg-mist p-3">
+          <section
+            key={col.key}
+            className="rounded-2xl border border-accent bg-mist p-3"
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              void onDropColumn(col.key);
+            }}
+          >
             <h2 className="px-2 text-lg font-semibold">{col.title}</h2>
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-3 min-h-[4rem] space-y-2">
               {items
                 .filter((l) => l.status === col.key || (col.key === "rejected" && l.status === "lost"))
                 .map((l) => (
-                  <li key={l.id} className="rounded-xl border border-line bg-paper p-3">
+                  <li
+                    key={l.id}
+                    draggable
+                    onDragStart={() => setDragId(l.id)}
+                    onDragEnd={() => setDragId(null)}
+                    className={`cursor-grab rounded-xl border border-line bg-paper p-3 active:cursor-grabbing ${
+                      dragId === l.id ? "opacity-60" : ""
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <label className="flex items-start gap-2">
                         <input
@@ -225,6 +279,36 @@ export default function LeadsPage() {
           </section>
         ))}
       </div>
+      {rejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-line bg-paper p-4 shadow-lg">
+            <h3 className="text-lg font-semibold">Причина отказа</h3>
+            <p className="mt-1 text-sm text-muted">Короткий текст обязателен для колонки «Отказ».</p>
+            <textarea
+              className="mt-3 w-full rounded-xl border border-line bg-slot p-2 text-sm"
+              rows={3}
+              value={rejectModal.reason}
+              onChange={(e) => setRejectModal({ ...rejectModal, reason: e.target.value })}
+              placeholder="Например: не наш профиль"
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm" onClick={() => setRejectModal(null)}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-accent px-3 py-2 text-sm text-ink"
+                onClick={async () => {
+                  const ok = await moveLead(rejectModal.id, "rejected", rejectModal.reason.trim());
+                  if (ok) setRejectModal(null);
+                }}
+              >
+                Перенести в «Отказ»
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

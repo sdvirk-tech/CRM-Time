@@ -6,6 +6,8 @@ import { useParams } from "next/navigation";
 export default function PublicFormPage() {
   const params = useParams<{ key: string }>();
   const [chatUrl, setChatUrl] = useState("");
+  const [workspaceTitle, setWorkspaceTitle] = useState("");
+  const [accentColor, setAccentColor] = useState("#99CCFF");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -14,6 +16,8 @@ export default function PublicFormPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.chatUrl) setChatUrl(d.chatUrl);
+        if (d.branding?.workspaceTitle) setWorkspaceTitle(d.branding.workspaceTitle);
+        if (d.branding?.accentColor) setAccentColor(d.branding.accentColor);
       })
       .catch(() => {});
   }, [params.key]);
@@ -38,9 +42,13 @@ export default function PublicFormPage() {
     e.currentTarget.reset();
   }
 
+  const title = workspaceTitle || "CRM-Time";
+
   return (
     <main className="mx-auto max-w-md px-6 py-16">
-      <p className="w-fit rounded bg-mist px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink">CRM-Time</p>
+      <p className="w-fit rounded px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink" style={{ backgroundColor: accentColor }}>
+        {title}
+      </p>
       <h1 className="mt-2 text-3xl font-semibold">Имя и телефон</h1>
       <p className="mt-2 text-sm text-muted">Код ТН ВЭД и груз собираем в чате, не этой формой.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
@@ -50,11 +58,13 @@ export default function PublicFormPage() {
           <input name="consent" type="checkbox" required value="yes" className="mt-1" />
           <span>Согласен на обработку персональных данных (152-ФЗ)</span>
         </label>
-        <button className="w-full rounded-xl bg-accent px-4 py-2 text-ink">Оставить контакт</button>
+        <button type="submit" className="w-full rounded-xl px-4 py-2 text-ink" style={{ backgroundColor: accentColor }}>
+          Оставить контакт
+        </button>
       </form>
       <p className="mt-4">
         {chatUrl ? (
-          <a className="link" href={chatUrl}>
+          <a className="link" href={chatUrl} style={{ color: accentColor }}>
             Написать в чат
           </a>
         ) : (

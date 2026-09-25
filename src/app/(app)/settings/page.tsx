@@ -36,6 +36,8 @@ export default function SettingsPage() {
   const [ruleAssignee, setRuleAssignee] = useState("");
   const [ruleMsg, setRuleMsg] = useState("");
   const [statusLine, setStatusLine] = useState("");
+  const [jsonImport, setJsonImport] = useState("");
+  const [jsonImportMsg, setJsonImportMsg] = useState("");
 
   async function load() {
     const [ws, me, team, rules] = await Promise.all([
@@ -105,6 +107,32 @@ export default function SettingsPage() {
       setHookSecret("");
       await load();
     }
+  }
+
+  async function runJsonImport(dryRun: boolean) {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(jsonImport);
+    } catch {
+      setJsonImportMsg("Некорректный JSON");
+      return;
+    }
+    const res = await fetch("/api/workspace/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payload, dryRun, mode: "merge" }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setJsonImportMsg(d.error || d.result?.errors?.[0]?.detail || "Ошибка");
+      return;
+    }
+    setJsonImportMsg(
+      dryRun
+        ? `Проверка JSON: контакты +${d.contacts?.created}/~${d.contacts?.updated}, лиды +${d.leads?.created}, режим ${d.mode}`
+        : `Импорт JSON (${d.mode}): контакты +${d.contacts?.created}/~${d.contacts?.updated}, лиды +${d.leads?.created}/~${d.leads?.updated}`,
+    );
+    if (!dryRun) await load();
   }
 
   async function downloadExport() {
@@ -400,6 +428,23 @@ export default function SettingsPage() {
           <button type="button" className="rounded-xl border border-line px-4 py-2 text-sm" onClick={downloadExport}>
             Скачать JSON
           </button>
+          <p className="text-sm text-muted">Импорт из файла экспорта: по умолчанию слияние, без стирания данных.</p>
+          <textarea
+            className="w-full rounded-xl border border-line bg-slot p-3 text-xs font-mono"
+            rows={8}
+            placeholder='Вставьте JSON из «Скачать JSON»'
+            value={jsonImport}
+            onChange={(e) => setJsonImport(e.target.value)}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="rounded-xl border border-line px-4 py-2 text-sm" onClick={() => runJsonImport(true)}>
+              Проверить JSON
+            </button>
+            <button type="button" className="rounded-xl bg-accent px-4 py-2 text-sm text-ink" onClick={() => runJsonImport(false)}>
+              Применить JSON
+            </button>
+          </div>
+          {jsonImportMsg && <p className="ok-banner rounded px-3 py-2 text-sm">{jsonImportMsg}</p>}
           {statusLine && <p className="text-sm text-muted">Статус: {statusLine}</p>}
           <p className="text-xs text-muted">Публично: GET /api/health · подробнее здесь для владельца (/api/status).</p>
         </section>

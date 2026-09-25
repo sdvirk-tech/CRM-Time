@@ -4,6 +4,7 @@ import { ingestInbound } from "@/lib/pipeline";
 import { corsJson, corsOptions } from "@/lib/cors";
 import { photoNoteFromUrl, saveChatPhoto } from "@/lib/uploads";
 import { acceptedConsent, CONSENT_ERROR, contactHasConsent } from "@/lib/consent";
+import { widgetBrand } from "@/lib/widget-brand";
 
 type Ctx = { params: Promise<{ key: string }> };
 
@@ -16,8 +17,10 @@ export async function GET(req: Request, ctx: Ctx) {
   const channel = await prisma.channel.findUnique({ where: { publicKey: key } });
   if (!channel || channel.type !== "web_chat") return jsonError("Чат не найден", 404);
   if (channel.enabled === false) return jsonError("Канал выключен", 403);
+  const ws = await prisma.workspace.findUnique({ where: { id: channel.workspaceId } });
+  const branding = widgetBrand(ws?.name || channel.name);
   const sessionId = new URL(req.url).searchParams.get("sessionId") || "";
-  if (!sessionId) return corsJson({ messages: [] });
+  if (!sessionId) return corsJson({ messages: [], branding });
   const contactCh = await prisma.contactChannel.findUnique({
     where: {
       workspaceId_type_externalId: {
@@ -27,12 +30,12 @@ export async function GET(req: Request, ctx: Ctx) {
       },
     },
   });
-  if (!contactCh) return corsJson({ messages: [], needsConsent: true });
+  if (!contactCh) return corsJson({ messages: [], needsConsent: true, branding });
   const contact = await prisma.contact.findUnique({ where: { id: contactCh.contactId } });
   const conv = await prisma.conversation.findFirst({
     where: { workspaceId: channel.workspaceId, contactId: contactCh.contactId, channelId: channel.id },
   });
-  if (!conv) return corsJson({ messages: [], needsConsent: !contact?.consentAt });
+  if (!conv) return corsJson({ messages: [], needsConsent: !contact?.consentAt, branding });
   const messages = await prisma.message.findMany({
     where: { conversationId: conv.id, direction: { in: ["inbound", "outbound"] } },
     orderBy: { createdAt: "asc" },
@@ -40,6 +43,7 @@ export async function GET(req: Request, ctx: Ctx) {
   return corsJson({
     conversationId: conv.id,
     needsConsent: !contact?.consentAt,
+    branding,
     messages: messages.map((m) => ({
       id: m.id,
       direction: m.direction,
