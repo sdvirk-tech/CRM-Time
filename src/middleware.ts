@@ -9,6 +9,7 @@ export function middleware(req: NextRequest) {
     pathname.startsWith("/api/ingest") ||
     pathname.startsWith("/api/public-form") ||
     pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/v1/") ||
     pathname.startsWith("/api/invite") ||
     pathname.startsWith("/invite") ||
     pathname.startsWith("/f/") ||

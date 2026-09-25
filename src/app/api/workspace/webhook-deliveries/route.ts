@@ -21,6 +21,7 @@ export async function GET() {
         success: i.success,
         statusCode: i.statusCode,
         error: i.error,
+        attempt: i.attempt,
         createdAt: i.createdAt,
         leadStatus: i.lead.status,
         leadSource: i.lead.source,

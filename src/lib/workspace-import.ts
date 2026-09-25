@@ -118,6 +118,7 @@ export async function importWorkspaceJson(opts: {
         ...(typeof s.tradeDescription === "string" ? { tradeDescription: s.tradeDescription } : {}),
         ...(typeof s.defaultModel === "string" || s.defaultModel === null ? { defaultModel: (s.defaultModel as string) || null } : {}),
         ...(typeof s.greeting === "string" ? { greeting: s.greeting } : {}),
+        ...(typeof s.chatGreeting === "string" ? { chatGreeting: s.chatGreeting } : {}),
         ...(typeof s.salesPrompt === "string" ? { salesPrompt: s.salesPrompt } : {}),
         ...(typeof s.slaMinutes === "number" ? { slaMinutes: s.slaMinutes } : {}),
         ...(typeof s.pingEnabled === "boolean" ? { pingEnabled: s.pingEnabled } : {}),

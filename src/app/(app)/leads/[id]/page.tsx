@@ -98,6 +98,10 @@ export default function LeadPage() {
         <a className="link" href={`/api/leads/${lead.id}?format=pdf`}>
           PDF карточки
         </a>
+        {" · "}
+        <Link className="link" href={`/leads/${lead.id}/print`} target="_blank">
+          Печать
+        </Link>
       </p>
       <CargoCard
         name={lead.contact.name}

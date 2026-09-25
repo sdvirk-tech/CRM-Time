@@ -1,6 +1,7 @@
 import { prisma } from "./prisma";
 import { channelToken, telegramSend } from "./telegram";
 import { notifyLeadWebhook } from "./webhook";
+import { emailManagerOnAssign } from "./assign-email";
 
 export async function notifyNewLead(opts: {
   workspaceId: string;
@@ -50,6 +51,18 @@ export async function notifyNewLead(opts: {
     }
   } catch {
     /* колокольчик не должен ронять ingest */
+  }
+  if (opts.assigneeId) {
+    try {
+      await emailManagerOnAssign({
+        workspaceId: opts.workspaceId,
+        leadId: opts.leadId,
+        assigneeId: opts.assigneeId,
+        previousAssigneeId: null,
+      });
+    } catch {
+      /* почта не должна ронять ingest */
+    }
   }
   try {
     await notifyLeadWebhook({

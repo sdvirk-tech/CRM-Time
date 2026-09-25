@@ -52,6 +52,10 @@ export default function ContactPage() {
         <a className="link" href={`/api/contacts/${contact.id}?format=pdf`}>
           PDF карточки
         </a>
+        {" · "}
+        <Link className="link" href={`/contacts/${contact.id}/print`} target="_blank">
+          Печать
+        </Link>
       </p>
       <p className="mt-4 max-w-xl text-sm">{contact.comment}</p>
       <section className="mt-8">

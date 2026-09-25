@@ -606,10 +606,11 @@ async function main() {
   assert(r.data.urgent === true, "chat default model is urgent");
   const chatDefPoll = await req(`/api/ingest/web-chat/${chatCh.publicKey}?sessionId=chat-default-${id}`);
   assert(chatDefPoll.status === 200, "web chat default poll");
-  assert(
-    !(chatDefPoll.data.messages || []).some((m) => m.direction === "outbound"),
-    "default model does not auto-reply in chat",
-  );
+  const chatDefOut = (chatDefPoll.data.messages || []).filter((m) => m.direction === "outbound");
+  assert(chatDefOut.length <= 1, "default model: no AI flood in chat");
+  if (chatDefOut.length === 1) {
+    assert(/Здравствуйте/i.test(chatDefOut[0].body), "only first-message site greeting allowed");
+  }
   r = await req(`/api/channels/${tgCh.id}/simulate`, {
     method: "POST",
     cookie,

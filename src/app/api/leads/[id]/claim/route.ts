@@ -4,6 +4,7 @@ import { withSession } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
 import { leadStatusLabel } from "@/lib/labels";
+import { emailManagerOnAssign } from "@/lib/assign-email";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,6 +16,12 @@ export async function POST(_req: Request, ctx: Ctx) {
     const updated = await prisma.lead.update({
       where: { id },
       data: { assigneeId: session.userId, status: lead.status === "new" ? "in_progress" : lead.status },
+    });
+    await emailManagerOnAssign({
+      workspaceId: session.workspaceId,
+      leadId: lead.id,
+      assigneeId: session.userId,
+      previousAssigneeId: lead.assigneeId,
     });
     if (lead.status === "new") {
       await logActivity({

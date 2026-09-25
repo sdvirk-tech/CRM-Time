@@ -1188,6 +1188,74 @@ async function main() {
   const flowAfterDismiss = await req("/api/flow", { cookie });
   assert(flowAfterDismiss.data.onboarding?.show === false, "onboarding hidden");
 
+  const keyRes = await req("/api/workspace/api-keys", { method: "POST", cookie, json: { name: "e2e" } });
+  assert(keyRes.status === 200 && keyRes.data.key, "api key created");
+  const apiKey = keyRes.data.key;
+  const v1Leads = await req("/api/v1/leads", { headers: { Authorization: `Bearer ${apiKey}` } });
+  assert(v1Leads.status === 200 && Array.isArray(v1Leads.data.items), "v1 leads");
+  const v1NoAuth = await req("/api/v1/leads");
+  assert(v1NoAuth.status === 401, "v1 leads need bearer");
+  const v1Contacts = await req("/api/v1/contacts", { headers: { Authorization: `Bearer ${apiKey}` } });
+  assert(v1Contacts.status === 200 && v1Contacts.data.count >= 1, "v1 contacts");
+  const revokeKey = await req("/api/workspace/api-keys", {
+    method: "DELETE",
+    cookie,
+    json: { id: keyRes.data.id },
+  });
+  assert(revokeKey.status === 200, "api key revoked");
+
+  const tgGreet = `TG greet ${id}`;
+  const chatGreetText = `Chat greet ${id}`;
+  const greetBoth = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { greeting: tgGreet, chatGreeting: chatGreetText },
+  });
+  assert(greetBoth.status === 200 && greetBoth.data.greeting === tgGreet, "telegram greeting saved");
+  assert(greetBoth.data.chatGreeting === chatGreetText, "chat greeting saved");
+  const chatSession14 = `p14-${id}`;
+  await req(`/api/ingest/web-chat/${chatCh.publicKey}`, {
+    method: "POST",
+    json: { sessionId: chatSession14, text: "Первое сообщение ф14", consent: true },
+  });
+  const chatPoll14 = await req(
+    `/api/ingest/web-chat/${chatCh.publicKey}?sessionId=${encodeURIComponent(chatSession14)}`,
+  );
+  const outbound14 = (chatPoll14.data.messages || []).filter((m) => m.direction === "outbound").map((m) => m.body);
+  assert(outbound14.some((b) => b.includes(chatGreetText)), "site chat first message uses chatGreeting");
+
+  const printLead = await req(`/leads/${form1.data.leadId}/print`, { cookie });
+  assert(printLead.status === 200 && /print-card|Курс ЦБ/i.test(printLead.data.raw || ""), "print lead page");
+
+  let hookAttempt = 0;
+  const retryServer = http.createServer((_req, res) => {
+    hookAttempt += 1;
+    if (hookAttempt < 3) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("fail");
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end("{}");
+  });
+  await new Promise((resolve) => retryServer.listen(0, "127.0.0.1", resolve));
+  const retryPort = retryServer.address().port;
+  await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { outboundWebhookUrl: `http://127.0.0.1:${retryPort}/retry-hook` },
+  });
+  await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Retry Hook", phone: phone(), consent: true },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 9000));
+  const hookLogRetry = await req("/api/workspace/webhook-deliveries", { cookie });
+  const retryRows = (hookLogRetry.data.items || []).filter((x) => x.attempt >= 1);
+  assert(retryRows.some((x) => x.attempt === 3 && x.success), "webhook auto retry on attempt 3");
+  assert(retryRows.some((x) => x.attempt === 1 && !x.success), "webhook log shows attempt 1");
+  retryServer.close();
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -1204,6 +1272,7 @@ async function main() {
     phase11: "json-import+kanban+availability+widget-brand",
     phase12: "saved-views+ingest-rate+audit-csv+widget-mobile",
     phase13: "consent-text+webhook-log+hot-lead+embed-allowlist+canvas-checklist",
+    phase14: "api-keys+v1-read+webhook-retry+print+cchat-greet+assign-email",
   });
 }
 

@@ -45,4 +45,8 @@ export function defaultGreeting(): string {
   return "Здравствуйте! Помогу предварительно определить код ТН ВЭД. Опишите товар, пришлите ссылку или фото.";
 }
 
+export function defaultChatGreeting(): string {
+  return "Здравствуйте! Расскажите, что нужно перевезти — помогу собрать карточку груза.";
+}
+
 export const AI_DRAFT_LIMIT = 8;

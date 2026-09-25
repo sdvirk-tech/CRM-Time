@@ -134,3 +134,27 @@ a.link,
     line-height: 1.25;
   }
 }
+
+@media print {
+  header,
+  nav,
+  .no-print,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+  }
+
+  .print-card table {
+    page-break-inside: avoid;
+  }
+
+  .print-card th {
+    background: #eee !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

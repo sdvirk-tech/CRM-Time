@@ -32,6 +32,7 @@ model Workspace {
   tradeDescription String            @default("") @map("trade_description")
   defaultModel     String?           @map("default_model")
   greeting         String            @default("Здравствуйте! Напишите задачу или попросите менеджера.")
+  chatGreeting     String            @default("") @map("chat_greeting")
   salesPrompt      String            @default("") @map("sales_prompt")
   slaMinutes       Int               @default(15) @map("sla_minutes")
   pingEnabled      Boolean           @default(true) @map("ping_enabled")
@@ -79,7 +80,22 @@ model Workspace {
   cannedReplies    CannedReply[]
   followUps        FollowUp[]
   autoAssignRules  AutoAssignRule[]
+  apiKeys          WorkspaceApiKey[]
   @@map("workspaces")
+}
+
+model WorkspaceApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  name        String    @default("")
+  keyPrefix   String    @map("key_prefix")
+  keyHash     String    @map("key_hash")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([keyHash])
+  @@map("workspace_api_keys")
 }
 
 model SavedView {
@@ -551,6 +567,7 @@ model WebhookDelivery {
   leadId      String    @map("lead_id")
   url         String
   success     Boolean
+  attempt     Int       @default(1)
   statusCode  Int?      @map("status_code")
   error       String?
   payload     Json

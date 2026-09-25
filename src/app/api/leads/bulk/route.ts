@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logActivity } from "@/lib/activity";
 import { leadStatusLabel } from "@/lib/labels";
 import { ensureTag } from "@/lib/tags";
+import { emailManagerOnAssign } from "@/lib/assign-email";
 
 export async function POST(req: Request) {
   return withSession(async (session) => {
@@ -59,10 +60,19 @@ export async function POST(req: Request) {
         if (!member) return jsonError("Нет такого сотрудника", 404);
       }
       for (const lead of leads) {
+        const prev = lead.assigneeId;
         await prisma.lead.update({
           where: { id: lead.id },
           data: { assigneeId },
         });
+        if (assigneeId) {
+          await emailManagerOnAssign({
+            workspaceId: session.workspaceId,
+            leadId: lead.id,
+            assigneeId,
+            previousAssigneeId: prev,
+          });
+        }
         await logActivity({
           workspaceId: session.workspaceId,
           leadId: lead.id,

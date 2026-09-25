@@ -27,6 +27,10 @@ export default function SettingsPage() {
   const [workHoursEnd, setWorkHoursEnd] = useState("18:00");
   const [workHoursTz, setWorkHoursTz] = useState("Europe/Moscow");
   const [greeting, setGreeting] = useState("");
+  const [chatGreeting, setChatGreeting] = useState("");
+  const [apiKeys, setApiKeys] = useState<{ id: string; name: string; prefix: string; createdAt: string }[]>([]);
+  const [newApiKey, setNewApiKey] = useState("");
+  const [apiKeyMsg, setApiKeyMsg] = useState("");
   const [autoRules, setAutoRules] = useState<
     { id: string; channel: string | null; tagName: string | null; assigneeId: string; assigneeName: string }[]
   >([]);
@@ -43,7 +47,15 @@ export default function SettingsPage() {
   const [consentText, setConsentText] = useState("Согласен на обработку персональных данных (152-ФЗ)");
   const [embedOrigins, setEmbedOrigins] = useState("");
   const [hookDeliveries, setHookDeliveries] = useState<
-    { id: string; leadId: string; success: boolean; statusCode: number | null; error: string | null; createdAt: string }[]
+    {
+      id: string;
+      leadId: string;
+      success: boolean;
+      statusCode: number | null;
+      error: string | null;
+      attempt: number;
+      createdAt: string;
+    }[]
   >([]);
   const [hookRetryMsg, setHookRetryMsg] = useState("");
 
@@ -69,6 +81,7 @@ export default function SettingsPage() {
     setWorkHoursEnd(ws.workHoursEnd || "18:00");
     setWorkHoursTz(ws.workHoursTz || "Europe/Moscow");
     setGreeting(ws.greeting || "");
+    setChatGreeting(ws.chatGreeting || "");
     setIngestRateLimitMax(String(ws.ingestRateLimitMax ?? 60));
     setIngestRateLimitScope(ws.ingestRateLimitScope === "key" ? "key" : "ip");
     setConsentText(ws.consentText || "Согласен на обработку персональных данных (152-ФЗ)");
@@ -79,6 +92,10 @@ export default function SettingsPage() {
       fetch("/api/workspace/webhook-deliveries")
         .then((r) => (r.ok ? r.json() : { items: [] }))
         .then((d) => setHookDeliveries(d.items || []))
+        .catch(() => {});
+      fetch("/api/workspace/api-keys")
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((d) => setApiKeys(d.items || []))
         .catch(() => {});
       fetch("/api/status")
         .then((r) => r.json())
@@ -114,6 +131,7 @@ export default function SettingsPage() {
         workHoursEnd,
         workHoursTz,
         greeting,
+        chatGreeting,
         ingestRateLimitMax: Number(ingestRateLimitMax),
         ingestRateLimitScope,
         consentText,
@@ -390,13 +408,24 @@ export default function SettingsPage() {
           </span>
         </label>
         <label className="block text-sm">
-          Приветствие Telegram /start (новая сессия чата)
+          Приветствие Telegram /start (новая сессия)
           <textarea
             className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
             rows={3}
             value={greeting}
             onChange={(e) => setGreeting(e.target.value)}
             disabled={!owner}
+          />
+        </label>
+        <label className="block text-sm">
+          Первое сообщение в чате на сайте
+          <textarea
+            className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
+            rows={3}
+            value={chatGreeting}
+            onChange={(e) => setChatGreeting(e.target.value)}
+            disabled={!owner}
+            placeholder="Отдельный текст для виджета сайта (не /start в Telegram)"
           />
         </label>
         <label className="block text-sm">
@@ -447,8 +476,8 @@ export default function SettingsPage() {
                 {hookDeliveries.map((d) => (
                   <li key={d.id} className="rounded border border-line bg-paper px-3 py-2">
                     <p>
-                      {new Date(d.createdAt).toLocaleString("ru-RU")} · лид {d.leadId.slice(0, 8)}… ·{" "}
-                      {d.success ? "ок" : `ошибка ${d.error || d.statusCode || ""}`}
+                      {new Date(d.createdAt).toLocaleString("ru-RU")} · лид {d.leadId.slice(0, 8)}… · попытка{" "}
+                      {d.attempt ?? 1} · {d.success ? "ок" : `ошибка ${d.error || d.statusCode || ""}`}
                     </p>
                     {!d.success && (
                       <button
@@ -472,6 +501,64 @@ export default function SettingsPage() {
                 ))}
               </ul>
               {hookRetryMsg && <p className="text-sm text-muted">{hookRetryMsg}</p>}
+            </div>
+            <div className="mt-8 space-y-3">
+              <h2 className="text-xl font-semibold">Ключи API (только чтение)</h2>
+              <p className="text-sm text-muted">
+                GET <code>/api/v1/leads</code> и <code>/api/v1/contacts</code> с заголовком{" "}
+                <code>Authorization: Bearer …</code>. Только данные вашего воркспейса.
+              </p>
+              {newApiKey && (
+                <p className="rounded-xl border border-ok bg-ok/30 p-3 text-sm">
+                  Новый ключ (скопируйте сейчас, больше не покажем): <code className="break-all">{newApiKey}</code>
+                </p>
+              )}
+              {apiKeyMsg && <p className="text-sm text-muted">{apiKeyMsg}</p>}
+              <ul className="space-y-2 text-sm">
+                {apiKeys.map((k) => (
+                  <li key={k.id} className="flex flex-wrap items-center gap-2 rounded border border-line bg-paper px-3 py-2">
+                    <span>
+                      {k.name} · {k.prefix}…
+                    </span>
+                    <button
+                      type="button"
+                      className="link text-sm"
+                      onClick={async () => {
+                        const res = await fetch("/api/workspace/api-keys", {
+                          method: "DELETE",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ id: k.id }),
+                        });
+                        setApiKeyMsg(res.ok ? "Ключ отозван" : "Ошибка");
+                        setNewApiKey("");
+                        await load();
+                      }}
+                    >
+                      Отозвать
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="rounded-xl border border-line px-4 py-2"
+                onClick={async () => {
+                  const res = await fetch("/api/workspace/api-keys", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: "Интеграция" }),
+                  });
+                  const j = await res.json().catch(() => ({}));
+                  if (!res.ok) setApiKeyMsg(j.error || "Ошибка");
+                  else {
+                    setNewApiKey(j.key || "");
+                    setApiKeyMsg("Ключ создан");
+                    await load();
+                  }
+                }}
+              >
+                Создать ключ
+              </button>
             </div>
           </>
         )}

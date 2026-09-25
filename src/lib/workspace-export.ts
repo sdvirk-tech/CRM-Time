@@ -47,6 +47,7 @@ export async function buildWorkspaceExport(workspaceId: string) {
       tradeDescription: ws.tradeDescription,
       defaultModel: ws.defaultModel,
       greeting: ws.greeting,
+      chatGreeting: ws.chatGreeting,
       salesPrompt: ws.salesPrompt,
       slaMinutes: ws.slaMinutes,
       pingEnabled: ws.pingEnabled,

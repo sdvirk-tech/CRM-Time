@@ -20,6 +20,7 @@ import { deliverOutbound } from "./outbound";
 import { pickAssignee } from "./routing";
 import {
   AI_DRAFT_LIMIT,
+  defaultChatGreeting,
   defaultGreeting,
   extractPhone,
   isStartCommand,
@@ -362,6 +363,27 @@ export async function ingestInbound(input: IngestInput) {
   });
 
   const wsHours = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
+  if (input.source === "web_chat") {
+    const inboundCount = await prisma.message.count({
+      where: { conversationId: conversation.id, direction: "inbound" },
+    });
+    const convWelcome = await prisma.conversation.findUnique({ where: { id: conversation.id } });
+    if (inboundCount === 1 && convWelcome && convWelcome.welcomeSentNonce === 0) {
+      const chatText = wsHours.chatGreeting?.trim() || defaultChatGreeting();
+      await prisma.message.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: conversation.id,
+          direction: "outbound",
+          body: chatText,
+        },
+      });
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { welcomeSentNonce: 1 },
+      });
+    }
+  }
   const hoursCfg = workHoursFromWorkspace(wsHours);
   const withinHours = isWithinWorkHours(hoursCfg);
   if (!withinHours && (input.source === "web_chat" || input.source === "telegram")) {

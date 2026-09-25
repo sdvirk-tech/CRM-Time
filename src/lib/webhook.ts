@@ -2,6 +2,8 @@ import { prisma } from "./prisma";
 import { decryptSecret } from "./crypto";
 import { logActivity } from "./activity";
 
+const RETRY_BACKOFF_MS = [0, 2000, 5000];
+
 function allowedUrl(url: string) {
   try {
     const u = new URL(url);
@@ -11,6 +13,10 @@ function allowedUrl(url: string) {
   } catch {
     return false;
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function trimWebhookLog(workspaceId: string) {
@@ -36,10 +42,7 @@ type LeadWebhookPayload = {
   createdAt: string;
 };
 
-async function postLeadWebhook(opts: {
-  workspaceId: string;
-  leadId: string;
-  contactId: string;
+async function tryPostLeadWebhook(opts: {
   url: string;
   secret: string;
   payload: LeadWebhookPayload;
@@ -64,31 +67,85 @@ async function postLeadWebhook(opts: {
   } finally {
     clearTimeout(t);
   }
+  return { success: !err, statusCode, error: err };
+}
+
+async function logWebhookAttempt(opts: {
+  workspaceId: string;
+  leadId: string;
+  contactId: string;
+  url: string;
+  payload: LeadWebhookPayload;
+  attempt: number;
+  success: boolean;
+  statusCode: number | null;
+  error: string | null;
+}) {
   const delivery = await prisma.webhookDelivery.create({
     data: {
       workspaceId: opts.workspaceId,
       leadId: opts.leadId,
       url: opts.url,
-      success: !err,
-      statusCode,
-      error: err,
+      success: opts.success,
+      attempt: opts.attempt,
+      statusCode: opts.statusCode,
+      error: opts.error,
       payload: opts.payload,
     },
   });
   await trimWebhookLog(opts.workspaceId);
+  return delivery;
+}
+
+async function deliverLeadWebhook(opts: {
+  workspaceId: string;
+  leadId: string;
+  contactId: string;
+  url: string;
+  secret: string;
+  payload: LeadWebhookPayload;
+  maxAttempts?: number;
+}) {
+  const maxAttempts = opts.maxAttempts ?? 3;
+  let lastDelivery = null as Awaited<ReturnType<typeof logWebhookAttempt>> | null;
+  let lastErr: string | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const wait = RETRY_BACKOFF_MS[attempt - 1] ?? 5000;
+    if (wait > 0) await sleep(wait);
+    const result = await tryPostLeadWebhook({
+      url: opts.url,
+      secret: opts.secret,
+      payload: opts.payload,
+    });
+    lastErr = result.error;
+    lastDelivery = await logWebhookAttempt({
+      workspaceId: opts.workspaceId,
+      leadId: opts.leadId,
+      contactId: opts.contactId,
+      url: opts.url,
+      payload: opts.payload,
+      attempt,
+      success: result.success,
+      statusCode: result.statusCode,
+      error: result.error,
+    });
+    await logActivity({
+      workspaceId: opts.workspaceId,
+      leadId: opts.leadId,
+      contactId: opts.contactId,
+      actor: "система",
+      event: "webhook",
+      message: result.success
+        ? `Webhook лида Новый → ${opts.url} (попытка ${attempt})`
+        : `Webhook лида Новый: ${result.error || "ошибка"} (попытка ${attempt}/${maxAttempts})`,
+    });
+    if (result.success) break;
+  }
   await prisma.workspace.update({
     where: { id: opts.workspaceId },
-    data: { outboundWebhookLastAt: new Date(), outboundWebhookLastError: err },
+    data: { outboundWebhookLastAt: new Date(), outboundWebhookLastError: lastErr },
   });
-  await logActivity({
-    workspaceId: opts.workspaceId,
-    leadId: opts.leadId,
-    contactId: opts.contactId,
-    actor: "система",
-    event: "webhook",
-    message: err ? `Webhook лида Новый: ${err}` : `Webhook лида Новый → ${opts.url}`,
-  });
-  return delivery;
+  return lastDelivery;
 }
 
 export async function notifyLeadWebhook(opts: {
@@ -119,7 +176,7 @@ export async function notifyLeadWebhook(opts: {
       contact: { id: opts.contactId, name: opts.contactName, phone: opts.phone || null },
       createdAt: new Date().toISOString(),
     };
-    await postLeadWebhook({
+    await deliverLeadWebhook({
       workspaceId: opts.workspaceId,
       leadId: opts.leadId,
       contactId: opts.contactId,
@@ -156,15 +213,16 @@ export async function retryWebhookDelivery(workspaceId: string, deliveryId: stri
     }
   }
   const payload = row.payload as LeadWebhookPayload;
-  const delivery = await postLeadWebhook({
+  const delivery = await deliverLeadWebhook({
     workspaceId,
     leadId: row.leadId,
     contactId: payload.contact?.id || "",
     url,
     secret,
     payload: { ...payload, createdAt: new Date().toISOString() },
+    maxAttempts: 3,
   });
-  return { ok: true as const, delivery };
+  return { ok: true as const, delivery: delivery! };
 }
 
 export function webhookUrlOk(url: string) {
