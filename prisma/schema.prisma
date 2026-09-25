@@ -22,6 +22,7 @@ model User {
   assignedFollowUps FollowUp[]   @relation("FollowUpAssignee")
   notifications Notification[]
   internalNotes InternalNote[]
+  autoAssignRules AutoAssignRule[]
   @@map("users")
 }
 
@@ -70,7 +71,24 @@ model Workspace {
   internalNotes    InternalNote[]
   cannedReplies    CannedReply[]
   followUps        FollowUp[]
+  autoAssignRules  AutoAssignRule[]
   @@map("workspaces")
+}
+
+model AutoAssignRule {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  channel     String?
+  tagName     String?   @map("tag_name")
+  assigneeId  String    @map("assignee_id")
+  sortOrder   Int       @default(0) @map("sort_order")
+  enabled     Boolean   @default(true)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  assignee    User      @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, sortOrder])
+  @@map("auto_assign_rules")
 }
 
 model WorkspaceMember {
@@ -223,6 +241,8 @@ model Conversation {
   pinned      Boolean   @default(false)
   archived    Boolean   @default(false)
   snoozedUntil DateTime? @map("snoozed_until")
+  startSessionNonce Int   @default(0) @map("start_session_nonce")
+  welcomeSentNonce  Int   @default(0) @map("welcome_sent_nonce")
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

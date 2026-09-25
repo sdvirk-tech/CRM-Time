@@ -60,6 +60,12 @@ export async function POST(req: Request, ctx: Ctx) {
     ...Object.entries(fields).map(([k, v]) => `${k}: ${v}`),
   ].filter(Boolean);
 
+  const forceDuplicate =
+    payload.forceDuplicate === "true" ||
+    payload.forceDuplicate === "1" ||
+    payload.forceDuplicate === "yes" ||
+    payload.forceDuplicate === "on";
+
   const consented = acceptedConsent(payload.consent);
   const had = await contactHasConsent({
     workspaceId: channel.workspaceId,
@@ -79,7 +85,20 @@ export async function POST(req: Request, ctx: Ctx) {
     body: bodyParts.join("\n") || "Заявка с формы",
     fields,
     consentAt: consented ? new Date() : undefined,
+    forceDuplicate,
   });
+
+  if ("duplicateWarning" in result && result.duplicateWarning) {
+    return NextResponse.json(
+      {
+        ok: false,
+        duplicateWarning: true,
+        duplicateLeads: result.duplicateLeads,
+        message: "У этого телефона уже есть открытый лид. Повторите с forceDuplicate для второго.",
+      },
+      { status: 409, headers: { "Access-Control-Allow-Origin": "*" } },
+    );
+  }
 
   if (contentType.includes("application/json")) {
     return NextResponse.json(

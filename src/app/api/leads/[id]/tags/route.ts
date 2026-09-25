@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { withSession } from "@/lib/api";
 import { jsonError } from "@/lib/auth";
 import { logActivity } from "@/lib/activity";
+import { applyAutoAssignRules } from "@/lib/auto-assign";
 import { z } from "zod";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -48,6 +49,9 @@ export async function POST(req: Request, ctx: Ctx) {
       event: "tag",
       message: `Метка «${tag.name}»`,
     });
+    if (lead.status === "new" || lead.status === "in_progress") {
+      await applyAutoAssignRules(session.workspaceId, lead.id);
+    }
     return NextResponse.json({ ok: true, tags: await leadTags(session.workspaceId, lead.id) });
   });
 }

@@ -4,6 +4,7 @@
  * Требует запущенный сервер на BASE_URL (по умолчанию http://localhost:3000).
  */
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,7 +62,11 @@ function boxOnboardingAllowed(mode, workspaceCount) {
 }
 
 function composeConfig() {
-  return execSync("docker compose -f docker-compose.yml config", { encoding: "utf8", cwd: ROOT });
+  try {
+    return execSync("docker compose -f docker-compose.yml config", { encoding: "utf8", cwd: ROOT });
+  } catch {
+    return readFileSync(join(ROOT, "docker-compose.yml"), "utf8");
+  }
 }
 
 async function main() {
@@ -78,6 +83,8 @@ async function main() {
 
   const health = await req("/api/health");
   assert(health.status === 200 && health.data.ok === true, "health");
+  assert(health.data.postgres === true, "health postgres");
+  assert(typeof health.data.version === "string" && health.data.version.length >= 3, "health version");
   assert(health.data.deployMode === "saas" || health.data.deployMode === "box", "deployMode flag");
   assert(typeof health.data.publicRegistration === "boolean", "publicRegistration flag");
   assert(health.data.boxSingleWorkspace === (health.data.deployMode === "box"), "boxSingleWorkspace");

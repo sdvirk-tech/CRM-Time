@@ -924,7 +924,7 @@ async function main() {
   const hoursOn = await req("/api/workspace", {
     method: "PATCH",
     cookie,
-    json: { workHoursEnabled: true, workHoursStart: "09:00", workHoursEnd: "18:00", workHoursTz: "Europe/Moscow" },
+    json: { workHoursEnabled: true, workHoursStart: "03:00", workHoursEnd: "04:00", workHoursTz: "Europe/Moscow" },
   });
   assert(hoursOn.status === 200 && hoursOn.data.workHoursEnabled === true, "work hours saved");
   const chatSession = "phase9-" + id;
@@ -946,6 +946,75 @@ async function main() {
   assert(views.length >= 1, "view audit on timeline");
   assert(views[0].label === "просмотр", "view label ru");
 
+  const status = await req("/api/status", { cookie });
+  assert(status.status === 200 && status.data.postgres === true, "owner status postgres");
+  assert(status.data.version && status.data.deployMode, "owner status meta");
+  assert(status.data.counts && typeof status.data.counts.leads === "number", "owner status counts");
+  const statusMgr = await req("/api/status", { cookie: mgrACookie });
+  assert(statusMgr.status === 403, "manager cannot status");
+
+  const exportRes = await req("/api/workspace/export", { cookie });
+  assert(exportRes.status === 200, "workspace export");
+  assert(exportRes.data.exportVersion === 1, "export version");
+  assert(Array.isArray(exportRes.data.contacts) && exportRes.data.settings?.name, "export payload");
+  assert(!exportRes.data.channels?.some((c) => c.secretsEnc), "export no secrets");
+  const exportMgr = await req("/api/workspace/export", { cookie: mgrACookie });
+  assert(exportMgr.status === 403, "manager cannot export");
+
+  const greetText = "Привет phase10 /start " + id;
+  const greetSave = await req("/api/workspace", { method: "PATCH", cookie, json: { greeting: greetText } });
+  assert(greetSave.status === 200 && greetSave.data.greeting === greetText, "greeting in settings");
+  const wsGreet = await req("/api/workspace", { cookie });
+  assert(wsGreet.data.greeting === greetText, "greeting persisted");
+
+  const autoRule = await req("/api/workspace/auto-assign", {
+    method: "POST",
+    cookie,
+    json: { channel: "web_form", assigneeId: mgrA.userId },
+  });
+  assert(autoRule.status === 200 && autoRule.data.rule?.id, "auto-assign rule");
+  const autoPhone = phone();
+  const autoLead = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Автоназначение", phone: autoPhone },
+  });
+  assert(autoLead.status === 200 && autoLead.data.leadId, "auto-assign lead");
+  const autoLeadRow = await req(`/api/leads/${autoLead.data.leadId}`, { cookie });
+  assert(autoLeadRow.data.assignee?.id === mgrA.userId, "auto-assign applied");
+
+  const dupPhone = phone();
+  const dup1 = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Дубль 1", phone: dupPhone },
+  });
+  assert(dup1.status === 200 && dup1.data.leadId, "dup first lead");
+  const dupRepeat = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Дубль 1 повтор", phone: dupPhone },
+  });
+  assert(dupRepeat.status === 200, "repeat form same conversation ok");
+  const dupCheck = await req(`/api/leads/duplicate-check?phone=${encodeURIComponent(dupPhone)}`, { cookie });
+  assert(dupCheck.data.hasDuplicate === true, "dup check api");
+  const tgDupChat = "dupchat-" + id;
+  const tgDupIn = await req(`/api/channels/${tgCh.id}/simulate`, {
+    method: "POST",
+    cookie,
+    json: { chatId: tgDupChat, text: `Нужен расчёт, тел ${dupPhone}`, name: "Dup TG" },
+  });
+  assert(tgDupIn.status === 200 && tgDupIn.data.conversationId, "dup tg conv");
+  const dupBlock = await req(`/api/conversations/${tgDupIn.data.conversationId}/create-lead`, {
+    method: "POST",
+    cookie,
+    json: {},
+  });
+  assert(dupBlock.status === 409 && dupBlock.data.duplicateWarning === true, "dup hint 409");
+  const dupForce = await req(`/api/conversations/${tgDupIn.data.conversationId}/create-lead`, {
+    method: "POST",
+    cookie,
+    json: { force: true },
+  });
+  assert(dupForce.status === 200 && dupForce.data.lead?.id, "dup override");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -958,6 +1027,7 @@ async function main() {
     phase7: "tags+notes+canned+timeline",
     phase8: "tasks+pin+csv+webhook+reject",
     phase9: "snooze+archive+bulk+hours+view-audit",
+    phase10: "export+auto-assign+dup-hint+greeting+health-status",
   });
 }
 

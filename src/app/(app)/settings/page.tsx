@@ -26,9 +26,24 @@ export default function SettingsPage() {
   const [workHoursStart, setWorkHoursStart] = useState("09:00");
   const [workHoursEnd, setWorkHoursEnd] = useState("18:00");
   const [workHoursTz, setWorkHoursTz] = useState("Europe/Moscow");
+  const [greeting, setGreeting] = useState("");
+  const [autoRules, setAutoRules] = useState<
+    { id: string; channel: string | null; tagName: string | null; assigneeId: string; assigneeName: string }[]
+  >([]);
+  const [teamMembers, setTeamMembers] = useState<{ userId: string; name: string; role: string }[]>([]);
+  const [ruleChannel, setRuleChannel] = useState("");
+  const [ruleTag, setRuleTag] = useState("");
+  const [ruleAssignee, setRuleAssignee] = useState("");
+  const [ruleMsg, setRuleMsg] = useState("");
+  const [statusLine, setStatusLine] = useState("");
 
   async function load() {
-    const [ws, me] = await Promise.all([fetch("/api/workspace").then((r) => r.json()), fetch("/api/auth/me").then((r) => r.json())]);
+    const [ws, me, team, rules] = await Promise.all([
+      fetch("/api/workspace").then((r) => r.json()),
+      fetch("/api/auth/me").then((r) => r.json()),
+      fetch("/api/team").then((r) => r.json()),
+      fetch("/api/workspace/auto-assign").then((r) => (r.ok ? r.json() : { rules: [] })),
+    ]);
     setSla(String(ws.slaMinutes ?? 15));
     setPingEnabled(ws.pingEnabled !== false);
     if (ws.routingMode === "round_robin" || ws.routingMode === "pool") setRoutingMode(ws.routingMode);
@@ -43,6 +58,21 @@ export default function SettingsPage() {
     setWorkHoursStart(ws.workHoursStart || "09:00");
     setWorkHoursEnd(ws.workHoursEnd || "18:00");
     setWorkHoursTz(ws.workHoursTz || "Europe/Moscow");
+    setGreeting(ws.greeting || "");
+    setAutoRules(rules.rules || []);
+    setTeamMembers((team.members || []).map((m: { userId: string; name: string; role: string }) => m));
+    if (me.user?.role === "owner") {
+      fetch("/api/status")
+        .then((r) => r.json())
+        .then((s) => {
+          if (s.postgres !== undefined) {
+            setStatusLine(
+              `Postgres: ${s.postgres ? "ок" : "ошибка"} · v${s.version} · ${s.deployMode} · лидов ${s.counts?.leads ?? "—"}`,
+            );
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   useEffect(() => {
@@ -65,6 +95,7 @@ export default function SettingsPage() {
         workHoursStart,
         workHoursEnd,
         workHoursTz,
+        greeting,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -74,6 +105,56 @@ export default function SettingsPage() {
       setHookSecret("");
       await load();
     }
+  }
+
+  async function downloadExport() {
+    const res = await fetch("/api/workspace/export");
+    if (!res.ok) {
+      setMsg("Экспорт недоступен");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `crm-time-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setMsg("JSON экспорт скачан");
+  }
+
+  async function addAutoRule(e: FormEvent) {
+    e.preventDefault();
+    if (!ruleAssignee || (!ruleChannel && !ruleTag.trim())) {
+      setRuleMsg("Канал или метка и менеджер обязательны");
+      return;
+    }
+    const res = await fetch("/api/workspace/auto-assign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        channel: ruleChannel || null,
+        tagName: ruleTag.trim() || null,
+        assigneeId: ruleAssignee,
+      }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) setRuleMsg(d.error || "Ошибка");
+    else {
+      setRuleMsg("Правило добавлено");
+      setRuleChannel("");
+      setRuleTag("");
+      await load();
+    }
+  }
+
+  async function removeRule(id: string) {
+    await fetch("/api/workspace/auto-assign", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    await load();
   }
 
   async function runImport(dryRun: boolean) {
@@ -196,6 +277,16 @@ export default function SettingsPage() {
           </div>
         </fieldset>
         <label className="block text-sm">
+          Приветствие Telegram /start (новая сессия чата)
+          <textarea
+            className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
+            rows={3}
+            value={greeting}
+            onChange={(e) => setGreeting(e.target.value)}
+            disabled={!owner}
+          />
+        </label>
+        <label className="block text-sm">
           Дефолт модели (запасной ключ, не автопилот)
           <select
             className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
@@ -243,6 +334,76 @@ export default function SettingsPage() {
         )}
         {msg && <p className="ok-banner rounded px-3 py-2 text-sm">{msg}</p>}
       </form>
+      {owner && (
+        <section className="mt-12 max-w-xl space-y-4">
+          <h2 className="text-xl font-semibold">Автоназначение лидов «Новый»</h2>
+          <p className="text-sm text-muted">
+            Если канал или метка совпали — назначить менеджера (канал ИЛИ метка в одной строке).
+          </p>
+          <ul className="space-y-2 text-sm">
+            {autoRules.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-slot px-3 py-2">
+                <span>
+                  {r.channel ? `канал ${r.channel}` : ""}
+                  {r.channel && r.tagName ? " · " : ""}
+                  {r.tagName ? `метка «${r.tagName}»` : ""} → {r.assigneeName}
+                </span>
+                <button type="button" className="text-urgent" onClick={() => removeRule(r.id)}>
+                  Удалить
+                </button>
+              </li>
+            ))}
+          </ul>
+          <form onSubmit={addAutoRule} className="grid gap-2 sm:grid-cols-3">
+            <select
+              className="rounded-xl border border-line bg-paper px-3 py-2 text-sm"
+              value={ruleChannel}
+              onChange={(e) => setRuleChannel(e.target.value)}
+            >
+              <option value="">любой канал</option>
+              <option value="telegram">telegram</option>
+              <option value="web_form">web_form</option>
+              <option value="web_chat">web_chat</option>
+              <option value="email">email</option>
+            </select>
+            <input
+              className="rounded-xl border border-line bg-paper px-3 py-2 text-sm"
+              placeholder="метка (необяз.)"
+              value={ruleTag}
+              onChange={(e) => setRuleTag(e.target.value)}
+            />
+            <select
+              className="rounded-xl border border-line bg-paper px-3 py-2 text-sm"
+              value={ruleAssignee}
+              onChange={(e) => setRuleAssignee(e.target.value)}
+            >
+              <option value="">менеджер</option>
+              {teamMembers.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.name} ({m.role})
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="sm:col-span-3 rounded-xl bg-accent px-4 py-2 text-sm text-ink">
+              Добавить правило
+            </button>
+          </form>
+          {ruleMsg && <p className="text-sm text-muted">{ruleMsg}</p>}
+        </section>
+      )}
+      {owner && (
+        <section className="mt-12 max-w-xl space-y-3">
+          <h2 className="text-xl font-semibold">Резервная копия воркспейса</h2>
+          <p className="text-sm text-muted">
+            JSON: контакты, лиды, знания, настройки, цепочки без секретов каналов — для переноса на другую машину.
+          </p>
+          <button type="button" className="rounded-xl border border-line px-4 py-2 text-sm" onClick={downloadExport}>
+            Скачать JSON
+          </button>
+          {statusLine && <p className="text-sm text-muted">Статус: {statusLine}</p>}
+          <p className="text-xs text-muted">Публично: GET /api/health · подробнее здесь для владельца (/api/status).</p>
+        </section>
+      )}
       <section className="mt-12 max-w-xl">
         <h2 className="text-xl font-semibold">Импорт контактов CSV</h2>
         <p className="mt-1 text-sm text-muted">

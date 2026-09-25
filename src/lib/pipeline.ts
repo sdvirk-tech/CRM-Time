@@ -31,6 +31,8 @@ import { formatCbrLine, getCbrRates } from "./cbr";
 import { notifyNewLead } from "./notify";
 import { isWithinWorkHours, workHoursFromWorkspace } from "./work-hours";
 import { maybeOutsideHoursReply } from "./outside-hours";
+import { findOpenDuplicateLeads } from "./duplicate-leads";
+import { applyAutoAssignRules } from "./auto-assign";
 
 export type IngestInput = {
   workspaceId: string;
@@ -45,6 +47,7 @@ export type IngestInput = {
   eventKey?: string;
   photoNote?: string;
   consentAt?: Date;
+  forceDuplicate?: boolean;
 };
 
 function explicitBinding(provider?: string | null, model?: string | null) {
@@ -383,6 +386,11 @@ export async function ingestInbound(input: IngestInput) {
   if (isStartCommand(input.body)) {
     const ws = await prisma.workspace.findUniqueOrThrow({ where: { id: input.workspaceId } });
     const greeting = ws.greeting?.trim() || defaultGreeting();
+    const session = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { startSessionNonce: { increment: 1 } },
+    });
+    const shouldWelcome = session.welcomeSentNonce < session.startSessionNonce;
     await prisma.message.create({
       data: {
         workspaceId: input.workspaceId,
@@ -391,14 +399,20 @@ export async function ingestInbound(input: IngestInput) {
         body: "Сессия сброшена. Новый заход, старый расчёт не подмешиваем.",
       },
     });
-    await prisma.message.create({
-      data: {
-        workspaceId: input.workspaceId,
-        conversationId: conversation.id,
-        direction: "outbound",
-        body: greeting,
-      },
-    });
+    if (shouldWelcome) {
+      await prisma.message.create({
+        data: {
+          workspaceId: input.workspaceId,
+          conversationId: conversation.id,
+          direction: "outbound",
+          body: greeting,
+        },
+      });
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { welcomeSentNonce: session.startSessionNonce },
+      });
+    }
     await prisma.conversation.update({
       where: { id: conversation.id },
       data: { unread: true, urgent: false, urgentReason: null, aiError: null, status: "ai" },
@@ -417,7 +431,8 @@ export async function ingestInbound(input: IngestInput) {
       leadId: null,
       urgent: false,
       start: true,
-      greeting,
+      greeting: shouldWelcome ? greeting : null,
+      welcomeAlreadySent: !shouldWelcome,
     };
   }
 
@@ -583,10 +598,7 @@ export async function ingestInbound(input: IngestInput) {
   const shouldCreateLead = input.source === "web_form" || input.source === "email" || handoff || cardComplete;
   let leadId: string | null = null;
   if (shouldCreateLead) {
-    const existing =
-      input.source !== "web_form"
-        ? await prisma.lead.findFirst({ where: { conversationId: conversation.id } })
-        : null;
+    const existing = await prisma.lead.findFirst({ where: { conversationId: conversation.id } });
     const itogo = cardComplete ? formatItogo(snap) : "";
     if (existing) {
       leadId = existing.id;
@@ -603,6 +615,21 @@ export async function ingestInbound(input: IngestInput) {
         });
       }
     } else {
+      const dups = await findOpenDuplicateLeads(input.workspaceId, {
+        phone: contact.phone,
+        telegramExternalId: input.source === "telegram" ? input.externalId : undefined,
+        contactId: contact.id,
+      });
+      if (dups.length && !input.forceDuplicate) {
+        return {
+          contactId: contact.id,
+          conversationId: conversation.id,
+          leadId: null,
+          urgent: false,
+          duplicateWarning: true as const,
+          duplicateLeads: dups,
+        };
+      }
       const lead = await prisma.lead.create({
         data: {
           workspaceId: input.workspaceId,
@@ -616,12 +643,14 @@ export async function ingestInbound(input: IngestInput) {
         },
       });
       leadId = lead.id;
+      await applyAutoAssignRules(input.workspaceId, lead.id);
+      const leadFresh = await prisma.lead.findUnique({ where: { id: lead.id } });
       await notifyNewLead({
         workspaceId: input.workspaceId,
         leadId: lead.id,
         contactId: contact.id,
         contactName: contact.name,
-        assigneeId: lead.assigneeId,
+        assigneeId: leadFresh?.assigneeId ?? lead.assigneeId,
         source: input.source,
         phone: contact.phone,
       });

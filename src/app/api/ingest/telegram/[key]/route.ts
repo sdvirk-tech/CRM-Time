@@ -18,7 +18,7 @@ export async function POST(req: Request, ctx: Ctx) {
   if ("error" in result && result.error) return jsonError(result.error, result.status ?? 400);
   if ("skipped" in result && result.skipped) return NextResponse.json({ ok: true });
   if ("duplicate" in result && result.duplicate) return NextResponse.json({ ok: true, duplicate: true });
-  if ("start" in result && result.start && result.greeting) {
+  if ("start" in result && result.start && result.greeting && !("welcomeAlreadySent" in result && result.welcomeAlreadySent)) {
     const token = await channelToken(channel.id);
     const chatId = update.message?.chat?.id;
     if (token && chatId) {
