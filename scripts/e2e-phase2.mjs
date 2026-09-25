@@ -1128,6 +1128,66 @@ async function main() {
   const auditMgr = await req("/api/workspace/audit-export", { cookie: mgrACookie });
   assert(auditMgr.status === 403, "audit export owner only");
 
+  const customConsent = "Я согласен на обработку ПДн по политике компании (152-ФЗ)";
+  const consentPatch = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { consentText: customConsent },
+  });
+  assert(consentPatch.status === 200 && consentPatch.data.consentText === customConsent, "consent text saved");
+  const pubFormMeta = await req(`/api/public-form/${formCh.publicKey}`);
+  assert(pubFormMeta.data.consentText === customConsent, "consent on public form meta");
+  const leadsHot = await req("/api/leads", { cookie });
+  assert(leadsHot.data.items?.every((l) => typeof l.hot === "boolean"), "hot flag on leads");
+
+  const embedBlock = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Block", phone: phone(), consent: true },
+    headers: { Origin: "https://evil.example" },
+  });
+  assert(embedBlock.status === 200, "embed empty allowlist ok");
+  await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { embedAllowedOrigins: ["allowed.example"] },
+  });
+  const embedDenied = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Denied", phone: phone(), consent: true },
+    headers: { Origin: "https://evil.example" },
+  });
+  assert(embedDenied.status === 403, "embed origin blocked");
+  const embedOk = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "Allowed", phone: phone(), consent: true },
+    headers: { Origin: "https://allowed.example" },
+  });
+  assert(embedOk.status === 200, "embed origin allowed");
+  await req("/api/workspace", { method: "PATCH", cookie, json: { embedAllowedOrigins: [] } });
+
+  const hookLogBefore = await req("/api/workspace/webhook-deliveries", { cookie });
+  assert(hookLogBefore.status === 200 && hookLogBefore.data.items?.length >= 1, "webhook delivery log");
+  const failed = hookLogBefore.data.items.find((x) => !x.success);
+  if (failed) {
+    const retry = await req("/api/workspace/webhook-deliveries", {
+      method: "POST",
+      cookie,
+      json: { deliveryId: failed.id },
+    });
+    assert(retry.status === 200 || retry.status === 400, "webhook retry endpoint");
+  }
+
+  const flowOnboard = await req("/api/flow", { cookie });
+  assert(flowOnboard.data.onboarding?.steps?.hasChannel === true, "onboarding checklist api");
+  const dismissOb = await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { dismissOnboardingChecklist: true },
+  });
+  assert(dismissOb.status === 200, "dismiss onboarding");
+  const flowAfterDismiss = await req("/api/flow", { cookie });
+  assert(flowAfterDismiss.data.onboarding?.show === false, "onboarding hidden");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -1143,6 +1203,7 @@ async function main() {
     phase10: "export+auto-assign+dup-hint+greeting+health-status",
     phase11: "json-import+kanban+availability+widget-brand",
     phase12: "saved-views+ingest-rate+audit-csv+widget-mobile",
+    phase13: "consent-text+webhook-log+hot-lead+embed-allowlist+canvas-checklist",
   });
 }
 

@@ -4,6 +4,7 @@ import { withSession } from "@/lib/api";
 import { csvBody } from "@/lib/csv";
 import { leadStatusLabel, sourceLabel } from "@/lib/labels";
 import { dlpLead, maskPii, maskPhoneIf, shouldMask } from "@/lib/dlp";
+import { cargoBagFromFieldValues, contactsWithInboundReply, isLeadHot } from "@/lib/lead-hot";
 
 export async function GET(req: Request) {
   return withSession(async (session) => {
@@ -31,6 +32,10 @@ export async function GET(req: Request) {
       },
     });
     const newCount = leads.filter((l) => l.status === "new").length;
+    const replied = await contactsWithInboundReply(
+      session.workspaceId,
+      leads.map((l) => l.contactId),
+    );
     const format = new URL(req.url).searchParams.get("format");
     const mask = shouldMask(session.role);
     if (format === "csv") {
@@ -73,17 +78,29 @@ export async function GET(req: Request) {
     }
     return NextResponse.json({
       newCount,
-      items: leads.map((l) => dlpLead(session.role, {
-        id: l.id,
-        status: l.status,
-        source: l.source,
-        urgent: l.urgent,
-        comment: l.comment,
-        createdAt: l.createdAt,
-        contact: { id: l.contact.id, name: l.contact.name, phone: l.contact.phone },
-        assignee: l.assignee ? { id: l.assignee.id, name: l.assignee.name } : null,
-        tags: l.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
-      })),
+      items: leads.map((l) => {
+        const bag = cargoBagFromFieldValues(l.contact.fieldValues);
+        const clientReplied = replied.has(l.contactId) || l.source === "web_form";
+        const hot = isLeadHot({
+          status: l.status,
+          bag,
+          name: l.contact.name,
+          phone: l.contact.phone,
+          clientReplied,
+        });
+        return dlpLead(session.role, {
+          id: l.id,
+          status: l.status,
+          source: l.source,
+          urgent: l.urgent,
+          hot,
+          comment: l.comment,
+          createdAt: l.createdAt,
+          contact: { id: l.contact.id, name: l.contact.name, phone: l.contact.phone },
+          assignee: l.assignee ? { id: l.assignee.id, name: l.assignee.name } : null,
+          tags: l.tags.map((t) => ({ id: t.tag.id, name: t.tag.name })),
+        });
+      }),
     });
   });
 }

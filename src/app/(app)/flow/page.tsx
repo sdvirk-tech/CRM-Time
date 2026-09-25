@@ -80,6 +80,10 @@ export default function FlowPage() {
     httpsWebhook?: boolean;
     preview?: string;
     compact?: string;
+    onboarding?: {
+      show: boolean;
+      steps: { hasBlocks: boolean; hasChannel: boolean; hasExplicitModel: boolean; hasRealLead: boolean };
+    };
   } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
@@ -266,6 +270,39 @@ export default function FlowPage() {
           <>
             <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-ink">Цепочка</p>
             <h1 className="mt-2 text-3xl font-semibold">Куда класть и как соединять</h1>
+            {data.onboarding?.show && (
+              <div className="mt-6 max-w-2xl rounded-2xl border border-accent bg-mist p-4">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="font-semibold">Первый лид — чеклист</p>
+                  <button
+                    type="button"
+                    className="text-sm text-muted underline"
+                    onClick={async () => {
+                      await fetch("/api/workspace", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ dismissOnboardingChecklist: true }),
+                      });
+                      await load(flowId);
+                    }}
+                  >
+                    Скрыть
+                  </button>
+                </div>
+                <ul className="mt-3 space-y-2 text-sm">
+                  {[
+                    { ok: data.onboarding.steps.hasBlocks, label: "Положить слоты на цепочку" },
+                    { ok: data.onboarding.steps.hasChannel, label: "Включить канал (форма, чат или Telegram)" },
+                    { ok: data.onboarding.steps.hasExplicitModel, label: "Выбрать явную модель на AI-слоте" },
+                    { ok: data.onboarding.steps.hasRealLead, label: "Получить первый реальный лид (не тестовая кнопка)" },
+                  ].map((s) => (
+                    <li key={s.label} className={s.ok ? "text-ink" : "text-muted"}>
+                      {s.ok ? "✓" : "○"} {s.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <p className="mt-2 max-w-2xl text-muted">
               Слоты только по порядку, без веток. Превью: <span className="text-ink">{data.preview || preview}</span>
             </p>

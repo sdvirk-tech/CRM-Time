@@ -47,8 +47,12 @@ model Workspace {
   workHoursTz      String            @default("Europe/Moscow") @map("work_hours_tz")
   ingestRateLimitMax Int             @default(60) @map("ingest_rate_limit_max")
   ingestRateLimitScope String        @default("ip") @map("ingest_rate_limit_scope")
+  consentText      String            @default("Согласен на обработку персональных данных (152-ФЗ)") @map("consent_text")
+  embedAllowedOrigins String[]       @default([]) @map("embed_allowed_origins")
+  onboardingChecklistDismissedAt DateTime? @map("onboarding_checklist_dismissed_at")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
+  webhookDeliveries WebhookDelivery[]
   members          WorkspaceMember[]
   savedViews       SavedView[]
   flows            Flow[]
@@ -316,6 +320,7 @@ model Lead {
   internalNotes  InternalNote[]
   activityEvents ActivityEvent[]
   followUps      FollowUp[]
+  webhookDeliveries WebhookDelivery[]
   @@index([workspaceId])
   @@index([workspaceId, status])
   @@map("leads")
@@ -538,4 +543,20 @@ model FxSnapshot {
   source    String   @default("cbr")
   fetchedAt DateTime @default(now()) @map("fetched_at")
   @@map("fx_snapshots")
+}
+
+model WebhookDelivery {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  leadId      String    @map("lead_id")
+  url         String
+  success     Boolean
+  statusCode  Int?      @map("status_code")
+  error       String?
+  payload     Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("webhook_deliveries")
 }

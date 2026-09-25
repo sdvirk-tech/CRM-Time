@@ -1,4 +1,11 @@
+export const DEFAULT_CONSENT_TEXT = "Согласен на обработку персональных данных (152-ФЗ)";
+
 export const CONSENT_ERROR = "Нужно согласие на обработку персональных данных (152-ФЗ)";
+
+export function resolveConsentText(text?: string | null) {
+  const t = (text || "").trim();
+  return t || DEFAULT_CONSENT_TEXT;
+}
 
 export function acceptedConsent(value: unknown) {
   if (value === true || value === 1) return true;

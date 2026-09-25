@@ -10,6 +10,8 @@ import { asPollConfig } from "@/lib/telegram-ingest";
 import { httpsWebhookAvailable } from "@/lib/telegram-poll";
 import { parseEmailSecrets } from "@/lib/email";
 import { z } from "zod";
+import { resolveConsentText } from "@/lib/consent";
+import { onboardingChecklistState } from "@/lib/onboarding-checklist";
 
 export async function GET(req: Request) {
   return withSession(async (session) => {
@@ -29,6 +31,8 @@ export async function GET(req: Request) {
     }));
     const { preview, compact } = buildFlowPreview(blockPayload, processes);
     const chatKey = channels.find((c) => c.type === "web_chat")?.publicKey;
+    const workspace = await prisma.workspace.findUnique({ where: { id: session.workspaceId } });
+    const consentText = resolveConsentText(workspace?.consentText);
     const channelPayload = channels.map((c) => {
       const cfg = (c.config ?? {}) as { allowedOrigins?: string[] };
       let hasToken = false;
@@ -60,7 +64,7 @@ export async function GET(req: Request) {
           c.type === "web_chat"
             ? chatSnippet(c.publicKey)
             : c.type === "web_form"
-              ? formSnippet(c.publicKey, chatKey)
+              ? formSnippet(c.publicKey, chatKey, consentText)
               : c.type === "email"
                 ? emailSnippet(c.publicKey, fromAddress)
                 : "",
@@ -81,7 +85,7 @@ export async function GET(req: Request) {
         pollOffset: asPollConfig(c.config).pollOffset ?? 0,
       };
     });
-    const workspace = await prisma.workspace.findUnique({ where: { id: session.workspaceId } });
+    const onboarding = await onboardingChecklistState(session.workspaceId);
     const flows = all.map((f) => {
       const { preview: p, compact: c } = buildFlowPreview(
         f.blocks.map((b) => ({ ...b, config: asConfig(b.config) })),
@@ -111,6 +115,8 @@ export async function GET(req: Request) {
         where: { workspaceId: session.workspaceId },
         orderBy: { createdAt: "asc" },
       }),
+      consentText,
+      onboarding,
     });
   });
 }
@@ -167,13 +173,18 @@ export async function DELETE(req: Request) {
   });
 }
 
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 function chatSnippet(key: string) {
   const url = `${publicUrl()}/c/${key}`;
   return `<!-- CRM-Time chat -->
 <iframe src="${url}" title="Чат" style="font-family:Calibri,Carlito,'Segoe UI',sans-serif;background:#F2F2F2;color:#1a1a1a;border:1px solid #99CCFF;width:360px;height:480px"></iframe>`;
 }
 
-function formSnippet(key: string, chatKey?: string) {
+function formSnippet(key: string, chatKey?: string, consentLabel?: string) {
+  const label = consentLabel || "Согласен на обработку персональных данных (152-ФЗ)";
   const url = `${publicUrl()}/api/ingest/web-form/${key}`;
   const chat = chatKey ? `${publicUrl()}/c/${chatKey}` : `${publicUrl()}/f/${key}`;
   return `<!-- CRM-Time: имя и телефон, груз в чате -->
@@ -183,7 +194,7 @@ function formSnippet(key: string, chatKey?: string) {
   <input name="phone" placeholder="Телефон" required style="display:block;width:100%;margin:8px 0;padding:8px;border:1px solid #99CCFF;background:#F2F2F2;color:#1a1a1a">
   <label style="display:flex;gap:8px;align-items:flex-start;margin:8px 0;font-size:13px">
     <input name="consent" type="checkbox" value="yes" required>
-    <span>Согласен на обработку персональных данных (152-ФЗ)</span>
+    <span>${escapeHtml(label)}</span>
   </label>
   <button type="submit" style="background:#99CCFF;color:#1a1a1a;border:0;padding:10px 16px;font-family:inherit">Оставить контакт</button>
   <p style="margin:12px 0 0;font-size:13px"><a href="${chat}" style="color:#1a1a1a">Написать в чат</a></p>

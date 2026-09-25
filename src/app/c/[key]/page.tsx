@@ -17,6 +17,8 @@ export default function PublicChatPage() {
   const [workspaceTitle, setWorkspaceTitle] = useState("");
   const [accentColor, setAccentColor] = useState("#99CCFF");
   const [status, setStatus] = useState("");
+  const [consentText, setConsentText] = useState("Согласен на обработку персональных данных (152-ФЗ)");
+  const [blocked, setBlocked] = useState(false);
 
   useEffect(() => {
     const key = `crm-time-chat-${params.key}`;
@@ -32,7 +34,13 @@ export default function PublicChatPage() {
     if (!sessionId) return;
     const res = await fetch(`/api/ingest/web-chat/${params.key}?sessionId=${encodeURIComponent(sessionId)}`);
     const data = await res.json();
+    if (!res.ok) {
+      setBlocked(true);
+      setStatus(data.error || "Чат недоступен");
+      return;
+    }
     setMessages(data.messages ?? []);
+    if (data.consentText) setConsentText(data.consentText);
     if (typeof data.needsConsent === "boolean") setNeedsConsent(data.needsConsent);
     if (data.branding?.workspaceTitle) setWorkspaceTitle(data.branding.workspaceTitle);
     if (data.branding?.accentColor) setAccentColor(data.branding.accentColor);
@@ -88,6 +96,14 @@ export default function PublicChatPage() {
 
   const title = workspaceTitle || "CRM-Time";
 
+  if (blocked) {
+    return (
+      <main className="public-widget mx-auto max-w-md px-4 py-16 text-center">
+        <p className="text-urgent">{status}</p>
+      </main>
+    );
+  }
+
   return (
     <main className="public-widget mx-auto flex min-h-screen max-w-md flex-col px-3 py-6 sm:px-4 sm:py-8">
       <p className="w-fit rounded px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink" style={{ backgroundColor: accentColor }}>
@@ -135,7 +151,7 @@ export default function PublicChatPage() {
         {needsConsent && (
           <label className="flex w-full items-start gap-2 text-sm">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1" />
-            <span>Согласен на обработку персональных данных (152-ФЗ)</span>
+            <span>{consentText}</span>
           </label>
         )}
         <button type="submit" className="public-widget-btn rounded px-4 py-3 text-ink" style={{ backgroundColor: accentColor }}>

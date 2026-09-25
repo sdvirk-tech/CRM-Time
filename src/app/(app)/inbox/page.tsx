@@ -25,6 +25,7 @@ type Item = {
   lastMessage: string;
   updatedAt: string;
   leadId?: string | null;
+  hot?: boolean;
 };
 
 export default function InboxPage() {
@@ -147,6 +148,7 @@ export default function InboxPage() {
                         : "Telegram"}
                   {item.status === "manager" ? " · менеджер" : item.status === "closed" ? " · закрыто" : ""}
                 </span>
+                {item.hot && <span className="rounded bg-accent px-2 py-0.5 text-xs font-semibold">горячий</span>}
                 {item.urgent && <span className="urgent-badge">срочно</span>}
                 {item.urgentReason === "silent_client" && <span className="urgent-badge">пинг</span>}
                 {item.stale && <span className="urgent-badge">завис</span>}

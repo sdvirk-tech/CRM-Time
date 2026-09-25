@@ -33,6 +33,9 @@ export async function GET() {
       workHoursTz: workspace.workHoursTz,
       ingestRateLimitMax: workspace.ingestRateLimitMax,
       ingestRateLimitScope: workspace.ingestRateLimitScope,
+      consentText: workspace.consentText,
+      embedAllowedOrigins: workspace.embedAllowedOrigins,
+      onboardingChecklistDismissedAt: workspace.onboardingChecklistDismissedAt,
       deployMode: deployMode(),
       dataOnThisMachine: deployMode() === "box",
       publicRegistration: deployMode() !== "box",
@@ -63,11 +66,21 @@ export async function PATCH(req: Request) {
         workHoursTz: z.string().max(64).optional(),
         ingestRateLimitMax: z.coerce.number().int().min(0).max(10_000).optional(),
         ingestRateLimitScope: z.enum(["ip", "key"]).optional(),
+        consentText: z.string().min(5).max(2000).optional(),
+        embedAllowedOrigins: z.array(z.string().max(200)).optional(),
+        dismissOnboardingChecklist: z.boolean().optional(),
       })
       .safeParse(body);
     if (!parsed.success) return jsonError("Некорректные данные");
-    const { outboundWebhookUrl, outboundWebhookSecret, outboundWebhookClearSecret, ...rest } = parsed.data;
+    const {
+      outboundWebhookUrl,
+      outboundWebhookSecret,
+      outboundWebhookClearSecret,
+      dismissOnboardingChecklist,
+      ...rest
+    } = parsed.data;
     const data: Prisma.WorkspaceUpdateInput = { ...rest };
+    if (dismissOnboardingChecklist) data.onboardingChecklistDismissedAt = new Date();
     if (outboundWebhookUrl !== undefined) {
       const url = (outboundWebhookUrl || "").trim();
       if (url && !webhookUrlOk(url)) return jsonError("Нужен HTTPS (или http://127.0.0.1 для проверки)");
@@ -107,6 +120,9 @@ export async function PATCH(req: Request) {
       workHoursTz: workspace.workHoursTz,
       ingestRateLimitMax: workspace.ingestRateLimitMax,
       ingestRateLimitScope: workspace.ingestRateLimitScope,
+      consentText: workspace.consentText,
+      embedAllowedOrigins: workspace.embedAllowedOrigins,
+      onboardingChecklistDismissedAt: workspace.onboardingChecklistDismissedAt,
     });
   });
 }

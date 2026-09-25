@@ -4,6 +4,7 @@ import { withSession } from "@/lib/api";
 import { isStale, lastByDirection } from "@/lib/sla";
 import { dlpContact, dlpMessageBody } from "@/lib/dlp";
 import { releaseExpiredSnoozes } from "@/lib/snooze";
+import { cargoBagFromFieldValues, isLeadHot } from "@/lib/lead-hot";
 
 export async function GET(req: Request) {
   return withSession(async (session) => {
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
       where,
       orderBy: [{ pinned: "desc" }, { urgent: "desc" }, { updatedAt: "desc" }],
       include: {
-        contact: true,
+        contact: { include: { fieldValues: { include: { field: true } } } },
         channel: true,
         leads: { select: { id: true, status: true } },
         messages: { orderBy: { createdAt: "desc" }, take: 12 },
@@ -45,6 +46,18 @@ export async function GET(req: Request) {
         lastInboundAt: lastIn?.createdAt,
         lastOutboundAt: lastOut?.createdAt,
       });
+      const leadStatus = i.leads[0]?.status ?? null;
+      const bag = cargoBagFromFieldValues(i.contact.fieldValues);
+      const clientReplied = i.messages.some((m) => m.direction === "inbound");
+      const hot =
+        leadStatus &&
+        isLeadHot({
+          status: leadStatus,
+          bag,
+          name: i.contact.name,
+          phone: i.contact.phone,
+          clientReplied,
+        });
       return {
         id: i.id,
         status: i.status,
@@ -61,7 +74,8 @@ export async function GET(req: Request) {
         aiError: i.aiError,
         cardReady: i.leads.length > 0,
         leadId: i.leads[0]?.id ?? null,
-        leadStatus: i.leads[0]?.status ?? null,
+        leadStatus,
+        hot: Boolean(hot),
         contact: dlpContact(session.role, { id: i.contact.id, name: i.contact.name, phone: i.contact.phone }),
         channel: { type: i.channel.type, name: i.channel.name },
         lastMessage: dlpMessageBody(session.role, i.messages[0]?.body ?? ""),

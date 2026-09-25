@@ -10,6 +10,8 @@ import {
   ingestRateLimitedResponse,
   workspaceIngestLimits,
 } from "@/lib/ingest-rate-limit";
+import { embedOriginAllowed } from "@/lib/embed-origin";
+import { resolveConsentText } from "@/lib/consent";
 
 type Ctx = { params: Promise<{ key: string }> };
 
@@ -25,7 +27,14 @@ export async function GET(req: Request, ctx: Ctx) {
   const ws = await prisma.workspace.findUnique({ where: { id: channel.workspaceId } });
   const branding = widgetBrand(ws?.name || channel.name);
   const sessionId = new URL(req.url).searchParams.get("sessionId") || "";
-  if (!sessionId) return corsJson({ messages: [], branding });
+  const cfg = (channel.config ?? {}) as { allowedOrigins?: string[] };
+  const origin = req.headers.get("origin");
+  const referer = req.headers.get("referer");
+  if (!embedOriginAllowed(ws?.embedAllowedOrigins, cfg.allowedOrigins, origin, referer)) {
+    return jsonError("Домен не в списке разрешённых", 403);
+  }
+  const consentText = resolveConsentText(ws?.consentText);
+  if (!sessionId) return corsJson({ messages: [], branding, consentText });
   const contactCh = await prisma.contactChannel.findUnique({
     where: {
       workspaceId_type_externalId: {
@@ -35,12 +44,12 @@ export async function GET(req: Request, ctx: Ctx) {
       },
     },
   });
-  if (!contactCh) return corsJson({ messages: [], needsConsent: true, branding });
+  if (!contactCh) return corsJson({ messages: [], needsConsent: true, branding, consentText });
   const contact = await prisma.contact.findUnique({ where: { id: contactCh.contactId } });
   const conv = await prisma.conversation.findFirst({
     where: { workspaceId: channel.workspaceId, contactId: contactCh.contactId, channelId: channel.id },
   });
-  if (!conv) return corsJson({ messages: [], needsConsent: !contact?.consentAt, branding });
+  if (!conv) return corsJson({ messages: [], needsConsent: !contact?.consentAt, branding, consentText });
   const messages = await prisma.message.findMany({
     where: { conversationId: conv.id, direction: { in: ["inbound", "outbound"] } },
     orderBy: { createdAt: "asc" },
@@ -48,6 +57,7 @@ export async function GET(req: Request, ctx: Ctx) {
   return corsJson({
     conversationId: conv.id,
     needsConsent: !contact?.consentAt,
+    consentText,
     branding,
     messages: messages.map((m) => ({
       id: m.id,
@@ -105,6 +115,14 @@ export async function POST(req: Request, ctx: Ctx) {
   const channel = await prisma.channel.findUnique({ where: { publicKey: key } });
   if (!channel || channel.type !== "web_chat") return jsonError("Чат не найден", 404);
   if (channel.enabled === false) return jsonError("Канал выключен", 403);
+
+  const wsPost = await prisma.workspace.findUnique({ where: { id: channel.workspaceId } });
+  const cfgPost = (channel.config ?? {}) as { allowedOrigins?: string[] };
+  const originPost = req.headers.get("origin");
+  const refererPost = req.headers.get("referer");
+  if (!embedOriginAllowed(wsPost?.embedAllowedOrigins, cfgPost.allowedOrigins, originPost, refererPost)) {
+    return jsonError("Домен не в списке разрешённых", 403);
+  }
 
   const limits = await workspaceIngestLimits(channel.workspaceId);
   const rl = checkIngestRateLimit({

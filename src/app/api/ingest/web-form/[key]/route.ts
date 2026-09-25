@@ -9,14 +9,9 @@ import {
   ingestRateLimitedResponse,
   workspaceIngestLimits,
 } from "@/lib/ingest-rate-limit";
+import { embedOriginAllowed } from "@/lib/embed-origin";
 
 type Ctx = { params: Promise<{ key: string }> };
-
-function originAllowed(allowed: string[] | undefined, origin: string | null) {
-  if (!allowed || allowed.length === 0) return true;
-  if (!origin) return true;
-  return allowed.some((d) => origin.includes(d.replace(/^https?:\/\//, "")));
-}
 
 export async function POST(req: Request, ctx: Ctx) {
   const { key } = await ctx.params;
@@ -34,8 +29,10 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!rl.ok) return ingestRateLimitedResponse(rl.retryAfterSec);
 
   const cfg = (channel.config ?? {}) as { allowedOrigins?: string[] };
+  const ws = await prisma.workspace.findUnique({ where: { id: channel.workspaceId } });
   const origin = req.headers.get("origin");
-  if (!originAllowed(cfg.allowedOrigins, origin)) {
+  const referer = req.headers.get("referer");
+  if (!embedOriginAllowed(ws?.embedAllowedOrigins, cfg.allowedOrigins, origin, referer)) {
     return jsonError("Домен не в списке разрешённых", 403);
   }
 

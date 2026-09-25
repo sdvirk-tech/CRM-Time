@@ -12,6 +12,7 @@ type Lead = {
   status: string;
   source: string;
   urgent: boolean;
+  hot?: boolean;
   comment: string;
   createdAt: string;
   contact: { id: string; name: string; phone: string | null };
@@ -311,7 +312,10 @@ export default function LeadsPage() {
                           {l.contact.name}
                         </Link>
                       </label>
-                      {l.urgent && <span className="urgent-badge">срочно</span>}
+                      <div className="flex flex-col items-end gap-1">
+                        {l.hot && <span className="rounded bg-accent px-2 py-0.5 text-[11px] font-semibold">горячий</span>}
+                        {l.urgent && <span className="urgent-badge">срочно</span>}
+                      </div>
                     </div>
                     <p className="mt-1 text-xs text-muted">
                       {sourceLabel(l.source)}

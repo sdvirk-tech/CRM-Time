@@ -40,6 +40,12 @@ export default function SettingsPage() {
   const [jsonImportMsg, setJsonImportMsg] = useState("");
   const [ingestRateLimitMax, setIngestRateLimitMax] = useState("60");
   const [ingestRateLimitScope, setIngestRateLimitScope] = useState<"ip" | "key">("ip");
+  const [consentText, setConsentText] = useState("Согласен на обработку персональных данных (152-ФЗ)");
+  const [embedOrigins, setEmbedOrigins] = useState("");
+  const [hookDeliveries, setHookDeliveries] = useState<
+    { id: string; leadId: string; success: boolean; statusCode: number | null; error: string | null; createdAt: string }[]
+  >([]);
+  const [hookRetryMsg, setHookRetryMsg] = useState("");
 
   async function load() {
     const [ws, me, team, rules] = await Promise.all([
@@ -65,9 +71,15 @@ export default function SettingsPage() {
     setGreeting(ws.greeting || "");
     setIngestRateLimitMax(String(ws.ingestRateLimitMax ?? 60));
     setIngestRateLimitScope(ws.ingestRateLimitScope === "key" ? "key" : "ip");
+    setConsentText(ws.consentText || "Согласен на обработку персональных данных (152-ФЗ)");
+    setEmbedOrigins((ws.embedAllowedOrigins || []).join("\n"));
     setAutoRules(rules.rules || []);
     setTeamMembers((team.members || []).map((m: { userId: string; name: string; role: string }) => m));
     if (me.user?.role === "owner") {
+      fetch("/api/workspace/webhook-deliveries")
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((d) => setHookDeliveries(d.items || []))
+        .catch(() => {});
       fetch("/api/status")
         .then((r) => r.json())
         .then((s) => {
@@ -104,6 +116,11 @@ export default function SettingsPage() {
         greeting,
         ingestRateLimitMax: Number(ingestRateLimitMax),
         ingestRateLimitScope,
+        consentText,
+        embedAllowedOrigins: embedOrigins
+          .split(/[\n,;]+/)
+          .map((s) => s.trim())
+          .filter(Boolean),
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -349,6 +366,30 @@ export default function SettingsPage() {
           </div>
         </fieldset>
         <label className="block text-sm">
+          Текст согласия 152-ФЗ (форма и чат на сайте)
+          <textarea
+            className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
+            rows={2}
+            value={consentText}
+            onChange={(e) => setConsentText(e.target.value)}
+            disabled={!owner}
+          />
+        </label>
+        <label className="block text-sm">
+          Домены для embed (форма и чат)
+          <textarea
+            className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2 font-mono text-xs"
+            rows={3}
+            value={embedOrigins}
+            onChange={(e) => setEmbedOrigins(e.target.value)}
+            disabled={!owner}
+            placeholder="example.com&#10;shop.example.com"
+          />
+          <span className="mt-1 block text-xs text-muted">
+            По одному домену на строку. Пусто — без ограничения. localhost и 127.0.0.1 всегда разрешены для разработки.
+          </span>
+        </label>
+        <label className="block text-sm">
           Приветствие Telegram /start (новая сессия чата)
           <textarea
             className="mt-1 w-full rounded-xl border border-line bg-slot px-3 py-2"
@@ -399,6 +440,39 @@ export default function SettingsPage() {
               />
             </label>
             {hookLast && <p className="text-sm text-urgent">Последняя ошибка: {hookLast}</p>}
+            <div className="mt-4 space-y-2">
+              <p className="font-medium">Журнал доставки webhook (последние 50)</p>
+              {hookDeliveries.length === 0 && <p className="text-sm text-muted">Пока нет отправок.</p>}
+              <ul className="max-h-64 space-y-2 overflow-auto text-xs">
+                {hookDeliveries.map((d) => (
+                  <li key={d.id} className="rounded border border-line bg-paper px-3 py-2">
+                    <p>
+                      {new Date(d.createdAt).toLocaleString("ru-RU")} · лид {d.leadId.slice(0, 8)}… ·{" "}
+                      {d.success ? "ок" : `ошибка ${d.error || d.statusCode || ""}`}
+                    </p>
+                    {!d.success && (
+                      <button
+                        type="button"
+                        className="mt-1 link text-sm"
+                        onClick={async () => {
+                          const res = await fetch("/api/workspace/webhook-deliveries", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ deliveryId: d.id }),
+                          });
+                          const j = await res.json().catch(() => ({}));
+                          setHookRetryMsg(res.ok ? "Повтор отправлен" : j.error || "Ошибка");
+                          await load();
+                        }}
+                      >
+                        Повторить
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {hookRetryMsg && <p className="text-sm text-muted">{hookRetryMsg}</p>}
+            </div>
           </>
         )}
         {owner && (
