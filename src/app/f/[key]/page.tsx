@@ -45,20 +45,20 @@ export default function PublicFormPage() {
   const title = workspaceTitle || "CRM-Time";
 
   return (
-    <main className="mx-auto max-w-md px-6 py-16">
+    <main className="public-widget mx-auto max-w-md px-4 py-8 sm:px-6 sm:py-16">
       <p className="w-fit rounded px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink" style={{ backgroundColor: accentColor }}>
         {title}
       </p>
       <h1 className="mt-2 text-3xl font-semibold">Имя и телефон</h1>
       <p className="mt-2 text-sm text-muted">Код ТН ВЭД и груз собираем в чате, не этой формой.</p>
       <form onSubmit={onSubmit} className="mt-8 space-y-4">
-        <input name="name" required placeholder="Имя" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
-        <input name="phone" required placeholder="Телефон" className="w-full rounded-xl border border-line bg-slot px-3 py-2" />
+        <input name="name" required placeholder="Имя" className="w-full rounded-xl border border-line bg-slot px-3 py-3" />
+        <input name="phone" required placeholder="Телефон" className="w-full rounded-xl border border-line bg-slot px-3 py-3" />
         <label className="flex items-start gap-2 text-sm">
           <input name="consent" type="checkbox" required value="yes" className="mt-1" />
           <span>Согласен на обработку персональных данных (152-ФЗ)</span>
         </label>
-        <button type="submit" className="w-full rounded-xl px-4 py-2 text-ink" style={{ backgroundColor: accentColor }}>
+        <button type="submit" className="public-widget-btn w-full rounded-xl px-4 py-3 text-ink" style={{ backgroundColor: accentColor }}>
           Оставить контакт
         </button>
       </form>

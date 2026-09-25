@@ -4,6 +4,11 @@ import { jsonError } from "@/lib/auth";
 import { ingestInbound } from "@/lib/pipeline";
 import { normalizePhone, validateField } from "@/lib/validators";
 import { acceptedConsent, CONSENT_ERROR, contactHasConsent } from "@/lib/consent";
+import {
+  checkIngestRateLimit,
+  ingestRateLimitedResponse,
+  workspaceIngestLimits,
+} from "@/lib/ingest-rate-limit";
 
 type Ctx = { params: Promise<{ key: string }> };
 
@@ -18,6 +23,15 @@ export async function POST(req: Request, ctx: Ctx) {
   const channel = await prisma.channel.findUnique({ where: { publicKey: key } });
   if (!channel || channel.type !== "web_form") return jsonError("Форма не найдена", 404);
   if (channel.enabled === false) return jsonError("Канал выключен", 403);
+
+  const limits = await workspaceIngestLimits(channel.workspaceId);
+  const rl = checkIngestRateLimit({
+    req,
+    publicKey: key,
+    maxPerMinute: limits.maxPerMinute,
+    scope: limits.scope,
+  });
+  if (!rl.ok) return ingestRateLimitedResponse(rl.retryAfterSec);
 
   const cfg = (channel.config ?? {}) as { allowedOrigins?: string[] };
   const origin = req.headers.get("origin");

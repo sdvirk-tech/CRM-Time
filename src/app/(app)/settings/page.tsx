@@ -38,6 +38,8 @@ export default function SettingsPage() {
   const [statusLine, setStatusLine] = useState("");
   const [jsonImport, setJsonImport] = useState("");
   const [jsonImportMsg, setJsonImportMsg] = useState("");
+  const [ingestRateLimitMax, setIngestRateLimitMax] = useState("60");
+  const [ingestRateLimitScope, setIngestRateLimitScope] = useState<"ip" | "key">("ip");
 
   async function load() {
     const [ws, me, team, rules] = await Promise.all([
@@ -61,6 +63,8 @@ export default function SettingsPage() {
     setWorkHoursEnd(ws.workHoursEnd || "18:00");
     setWorkHoursTz(ws.workHoursTz || "Europe/Moscow");
     setGreeting(ws.greeting || "");
+    setIngestRateLimitMax(String(ws.ingestRateLimitMax ?? 60));
+    setIngestRateLimitScope(ws.ingestRateLimitScope === "key" ? "key" : "ip");
     setAutoRules(rules.rules || []);
     setTeamMembers((team.members || []).map((m: { userId: string; name: string; role: string }) => m));
     if (me.user?.role === "owner") {
@@ -98,6 +102,8 @@ export default function SettingsPage() {
         workHoursEnd,
         workHoursTz,
         greeting,
+        ingestRateLimitMax: Number(ingestRateLimitMax),
+        ingestRateLimitScope,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -257,6 +263,44 @@ export default function SettingsPage() {
             />
             По кругу
           </label>
+        </fieldset>
+        <fieldset className="space-y-2 rounded-xl border border-line bg-slot p-4 text-sm">
+          <legend className="px-1 font-medium">Лимит публичного ingest</legend>
+          <p className="text-muted">
+            Форма, чат и почта по ключу. 0 — без лимита. При превышении — ответ 429 с понятным текстом.
+          </p>
+          <label className="block">
+            Запросов в минуту
+            <input
+              className="mt-1 w-full rounded-xl border border-line bg-paper px-3 py-2"
+              value={ingestRateLimitMax}
+              onChange={(e) => setIngestRateLimitMax(e.target.value)}
+              disabled={!owner}
+            />
+          </label>
+          <fieldset className="space-y-1">
+            <legend className="text-xs text-muted">Считать по</legend>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="ingestScope"
+                checked={ingestRateLimitScope === "ip"}
+                onChange={() => setIngestRateLimitScope("ip")}
+                disabled={!owner}
+              />
+              IP клиента
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="ingestScope"
+                checked={ingestRateLimitScope === "key"}
+                onChange={() => setIngestRateLimitScope("key")}
+                disabled={!owner}
+              />
+              Ключ канала (общий лимит на форму/чат)
+            </label>
+          </fieldset>
         </fieldset>
         <fieldset className="space-y-2 rounded-xl border border-line bg-slot p-4 text-sm">
           <legend className="px-1 font-medium">Рабочие часы</legend>
@@ -428,7 +472,12 @@ export default function SettingsPage() {
           <button type="button" className="rounded-xl border border-line px-4 py-2 text-sm" onClick={downloadExport}>
             Скачать JSON
           </button>
-          <p className="text-sm text-muted">Импорт из файла экспорта: по умолчанию слияние, без стирания данных.</p>
+          <a className="ml-2 inline-block rounded-xl border border-line px-4 py-2 text-sm" href="/api/workspace/audit-export">
+            CSV аудит за 30 дней
+          </a>
+          <p className="text-sm text-muted">
+            CSV: ActivityEvent и события каналов за последние 30 дней (compliance lite). Импорт JSON — слияние, без стирания.
+          </p>
           <textarea
             className="w-full rounded-xl border border-line bg-slot p-3 text-xs font-mono"
             rows={8}

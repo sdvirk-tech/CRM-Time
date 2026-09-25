@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DayOverview, DayStats } from "@/components/DayOverview";
 import { sourceLabel } from "@/lib/labels";
+import { SavedViewsBar } from "@/components/SavedViewsBar";
+import type { LeadsQuery } from "@/lib/saved-views";
 
 type Lead = {
   id: string;
@@ -39,6 +41,10 @@ export default function LeadsPage() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: string; reason: string } | null>(null);
   const [kanbanMsg, setKanbanMsg] = useState("");
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  const [overdueTasks, setOverdueTasks] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<LeadsQuery["status"]>("all");
+  const [overdueLeadIds, setOverdueLeadIds] = useState<Set<string>>(new Set());
 
   async function load(filter = tag) {
     const q = filter ? `?tag=${encodeURIComponent(filter)}` : "";
@@ -51,6 +57,7 @@ export default function LeadsPage() {
     setItems(d.items ?? []);
     setNewCount(d.newCount ?? 0);
     setStats(day);
+    setOverdueLeadIds(new Set((day.overdue ?? []).map((o: { leadId: string }) => o.leadId)));
     setTags(t.items ?? []);
     setMembers((team.members || []).map((m: { userId: string; name: string }) => ({ userId: m.userId, name: m.name })));
     setSelected((prev) => {
@@ -99,7 +106,33 @@ export default function LeadsPage() {
     await moveLead(lead.id, colKey);
   }
 
-  const picked = items.filter((l) => selected[l.id]).map((l) => l.id);
+  function applySavedQuery(q: Record<string, unknown>) {
+    const parsed = q as LeadsQuery;
+    if (parsed.tag !== undefined) {
+      setTag(parsed.tag);
+      load(parsed.tag);
+    }
+    setUrgentOnly(Boolean(parsed.urgentOnly));
+    setOverdueTasks(Boolean(parsed.overdueTasks));
+    if (parsed.status) setStatusFilter(parsed.status);
+  }
+
+  const currentQuery: LeadsQuery = {
+    tag: tag || undefined,
+    urgentOnly: urgentOnly || undefined,
+    overdueTasks: overdueTasks || undefined,
+    status: statusFilter === "all" ? undefined : statusFilter,
+  };
+
+  const visibleItems = items.filter((l) => {
+    if (urgentOnly && !l.urgent) return false;
+    if (overdueTasks && !overdueLeadIds.has(l.id)) return false;
+    if (statusFilter !== "all" && l.status !== statusFilter && !(statusFilter === "rejected" && l.status === "lost"))
+      return false;
+    return true;
+  });
+
+  const picked = visibleItems.filter((l) => selected[l.id]).map((l) => l.id);
 
   async function bulk(action: "tag" | "assign" | "status") {
     if (picked.length === 0) {
@@ -153,7 +186,32 @@ export default function LeadsPage() {
             {t.name}
           </button>
         ))}
+        <button
+          type="button"
+          className={`rounded-full px-3 py-1 ${urgentOnly ? "bg-accent text-ink" : "bg-slot"}`}
+          onClick={() => setUrgentOnly((v) => !v)}
+        >
+          только срочно
+        </button>
+        <button
+          type="button"
+          className={`rounded-full px-3 py-1 ${overdueTasks ? "bg-accent text-ink" : "bg-slot"}`}
+          onClick={() => setOverdueTasks((v) => !v)}
+        >
+          просроченные задачи
+        </button>
+        {(["all", "new", "in_progress", "qualified", "rejected"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={`rounded-full px-3 py-1 ${statusFilter === s ? "bg-accent text-ink" : "bg-slot"}`}
+            onClick={() => setStatusFilter(s)}
+          >
+            {s === "all" ? "все статусы" : s === "new" ? "новый" : s === "in_progress" ? "в работе" : s === "qualified" ? "квалиф." : "отказ"}
+          </button>
+        ))}
       </div>
+      <SavedViewsBar screen="leads" currentQuery={currentQuery} onApply={applySavedQuery} />
       <a className="mt-3 inline-block rounded border border-accent bg-paper px-3 py-2 text-sm" href="/api/leads?format=csv">
         Скачать CSV
       </a>
@@ -229,7 +287,7 @@ export default function LeadsPage() {
           >
             <h2 className="px-2 text-lg font-semibold">{col.title}</h2>
             <ul className="mt-3 min-h-[4rem] space-y-2">
-              {items
+              {visibleItems
                 .filter((l) => l.status === col.key || (col.key === "rejected" && l.status === "lost"))
                 .map((l) => (
                   <li

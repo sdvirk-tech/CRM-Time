@@ -45,9 +45,12 @@ model Workspace {
   workHoursStart   String            @default("09:00") @map("work_hours_start")
   workHoursEnd     String            @default("18:00") @map("work_hours_end")
   workHoursTz      String            @default("Europe/Moscow") @map("work_hours_tz")
+  ingestRateLimitMax Int             @default(60) @map("ingest_rate_limit_max")
+  ingestRateLimitScope String        @default("ip") @map("ingest_rate_limit_scope")
   createdAt        DateTime          @default(now()) @map("created_at")
   updatedAt        DateTime          @updatedAt @map("updated_at")
   members          WorkspaceMember[]
+  savedViews       SavedView[]
   flows            Flow[]
   blocks           FlowBlock[]
   aiProcesses      AiProcess[]
@@ -73,6 +76,21 @@ model Workspace {
   followUps        FollowUp[]
   autoAssignRules  AutoAssignRule[]
   @@map("workspaces")
+}
+
+model SavedView {
+  id          String    @id @default(cuid())
+  workspaceId String    @map("workspace_id")
+  screen      String
+  name        String
+  queryJson   Json      @map("query_json")
+  createdById String?   @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@unique([workspaceId, screen, name])
+  @@index([workspaceId, screen])
+  @@map("saved_views")
 }
 
 model AutoAssignRule {

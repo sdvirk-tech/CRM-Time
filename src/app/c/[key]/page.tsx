@@ -89,13 +89,13 @@ export default function PublicChatPage() {
   const title = workspaceTitle || "CRM-Time";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col px-4 py-8">
+    <main className="public-widget mx-auto flex min-h-screen max-w-md flex-col px-3 py-6 sm:px-4 sm:py-8">
       <p className="w-fit rounded px-2 py-1 text-xs uppercase tracking-[0.2em] text-ink" style={{ backgroundColor: accentColor }}>
         {title}
       </p>
       <h1 className="mt-2 text-2xl font-semibold">Чат</h1>
       <input
-        className="mt-4 rounded border border-line bg-slot px-3 py-2"
+        className="mt-4 w-full rounded border border-line bg-slot px-3 py-3"
         placeholder="Имя (необязательно)"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -117,12 +117,12 @@ export default function PublicChatPage() {
       </ol>
       <form onSubmit={send} className="mt-3 flex flex-wrap items-center gap-2">
         <input
-          className="min-w-[12rem] flex-1 rounded border border-line bg-slot px-3 py-2"
+          className="min-w-[12rem] flex-1 rounded border border-line bg-slot px-3 py-3"
           placeholder="Сообщение"
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <label className="cursor-pointer rounded border border-line px-3 py-2 text-sm">
+        <label className="public-widget-btn flex cursor-pointer items-center rounded border border-line px-3 py-2 text-sm">
           Фото
           <input
             type="file"
@@ -138,7 +138,7 @@ export default function PublicChatPage() {
             <span>Согласен на обработку персональных данных (152-ФЗ)</span>
           </label>
         )}
-        <button type="submit" className="rounded px-4 py-2 text-ink" style={{ backgroundColor: accentColor }}>
+        <button type="submit" className="public-widget-btn rounded px-4 py-3 text-ink" style={{ backgroundColor: accentColor }}>
           Отправить
         </button>
       </form>

@@ -99,3 +99,38 @@ a.link,
   background: var(--ok);
   color: var(--ink);
 }
+
+.public-widget {
+  -webkit-text-size-adjust: 100%;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.public-widget input[type="text"],
+.public-widget input[type="tel"],
+.public-widget input[type="email"],
+.public-widget textarea,
+.public-widget select,
+.public-widget button[type="submit"],
+.public-widget .public-widget-btn {
+  min-height: 48px;
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.public-widget label.flex {
+  min-height: 44px;
+  align-items: center;
+}
+
+@media (max-width: 480px) {
+  .public-widget {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+
+  .public-widget h1 {
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+}

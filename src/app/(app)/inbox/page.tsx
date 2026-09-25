@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { DayOverview, DayStats } from "@/components/DayOverview";
+import { SavedViewsBar } from "@/components/SavedViewsBar";
+import type { InboxQuery } from "@/lib/saved-views";
 
 type Item = {
   id: string;
@@ -22,6 +24,7 @@ type Item = {
   channel: { type: string; name: string };
   lastMessage: string;
   updatedAt: string;
+  leadId?: string | null;
 };
 
 export default function InboxPage() {
@@ -32,6 +35,8 @@ export default function InboxPage() {
   const [channel, setChannel] = useState<"all" | "web_form" | "telegram" | "web_chat" | "email">("all");
   const [status, setStatus] = useState<"all" | "ai" | "manager" | "closed">("all");
   const [view, setView] = useState<"active" | "archived" | "snoozed">("active");
+  const [overdueTasks, setOverdueTasks] = useState(false);
+  const [overdueLeadIds, setOverdueLeadIds] = useState<Set<string>>(new Set());
 
   async function load(nextView = view) {
     const q = new URLSearchParams(window.location.search).get("filter");
@@ -43,7 +48,20 @@ export default function InboxPage() {
     setItems(inbox.items ?? []);
     setUnread(inbox.unread ?? 0);
     setStats(day);
+    setOverdueLeadIds(new Set((day.overdue ?? []).map((o: { leadId: string }) => o.leadId)));
   }
+
+  function applySavedQuery(q: Record<string, unknown>) {
+    const parsed = q as InboxQuery;
+    if (parsed.view) setView(parsed.view);
+    if (parsed.filter) setFilter(parsed.filter);
+    if (parsed.channel) setChannel(parsed.channel);
+    if (parsed.status) setStatus(parsed.status);
+    setOverdueTasks(Boolean(parsed.overdueTasks));
+    if (parsed.view && parsed.view !== view) load(parsed.view);
+  }
+
+  const currentQuery: InboxQuery = { view, filter, channel, status, overdueTasks: overdueTasks || undefined };
 
   useEffect(() => {
     load();
@@ -56,9 +74,10 @@ export default function InboxPage() {
       if (filter === "stale" && !i.stale) return false;
       if (channel !== "all" && i.channel.type !== channel) return false;
       if (status !== "all" && i.status !== status) return false;
+      if (overdueTasks && (!i.leadId || !overdueLeadIds.has(i.leadId))) return false;
       return true;
     });
-  }, [items, filter, channel, status]);
+  }, [items, filter, channel, status, overdueTasks, overdueLeadIds]);
 
   return (
     <main className="p-8">
@@ -66,6 +85,7 @@ export default function InboxPage() {
       <h1 className="mt-2 text-3xl font-semibold">Входящие</h1>
       <p className="mt-2 text-muted">Без ответа: {unread}</p>
       <DayOverview stats={stats} onSla={load} />
+      <SavedViewsBar screen="inbox" currentQuery={currentQuery} onApply={applySavedQuery} />
       <div className="mt-4 flex flex-wrap gap-2">
         {(["active", "archived", "snoozed"] as const).map((v) => (
           <button
@@ -94,6 +114,13 @@ export default function InboxPage() {
             {s === "all" ? "все статусы" : s === "ai" ? "ИИ" : s === "manager" ? "менеджер" : "закрыто"}
           </button>
         ))}
+        <button
+          type="button"
+          className={overdueTasks ? "chip chip-on" : "chip"}
+          onClick={() => setOverdueTasks((v) => !v)}
+        >
+          просроченные задачи
+        </button>
       </div>
       <ul className="mt-6 divide-y divide-line overflow-hidden rounded border border-accent bg-paper">
         {visible.length === 0 && <li className="p-6 text-muted">Нет заявок в этом фильтре.</li>}

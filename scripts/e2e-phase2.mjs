@@ -1083,6 +1083,51 @@ async function main() {
     assert(brandChat.status === 200 && brandChat.data.branding?.accentColor === "#99CCFF", "chat widget accent");
   }
 
+  await req("/api/workspace", {
+    method: "PATCH",
+    cookie,
+    json: { ingestRateLimitMax: 2, ingestRateLimitScope: "ip" },
+  });
+  const rlIp = { headers: { "X-Forwarded-For": "203.0.113.99" } };
+  const rlOk1 = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "RL1", phone: phone() },
+    ...rlIp,
+  });
+  const rlOk2 = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "RL2", phone: phone() },
+    ...rlIp,
+  });
+  const rlBlock = await req(`/api/ingest/web-form/${formCh.publicKey}`, {
+    method: "POST",
+    json: { name: "RL3", phone: phone() },
+    ...rlIp,
+  });
+  assert(rlOk1.status === 200 && rlOk2.status === 200, "ingest rate ok");
+  assert(rlBlock.status === 429 && String(rlBlock.data.error || "").includes("Подождите"), "ingest rate 429");
+  await req("/api/workspace", { method: "PATCH", cookie, json: { ingestRateLimitMax: 60 } });
+
+  const svInbox = await req("/api/saved-views", {
+    method: "POST",
+    cookie,
+    json: { screen: "inbox", name: "Telegram P12", query: { channel: "telegram", filter: "all" } },
+  });
+  assert(svInbox.status === 200 && svInbox.data.id, "saved view owner");
+  const svMgr = await req("/api/saved-views", {
+    method: "POST",
+    cookie: mgrACookie,
+    json: { screen: "leads", name: "Срочно P12", query: { urgentOnly: true } },
+  });
+  assert(svMgr.status === 200 && svMgr.data.name === "Срочно P12", "saved view manager");
+  const svList = await req("/api/saved-views?screen=leads", { cookie: mgrACookie });
+  assert(svList.data.items?.some((x) => x.name === "Срочно P12"), "saved view dropdown");
+
+  const auditCsv = await req("/api/workspace/audit-export", { cookie });
+  assert(auditCsv.status === 200 && String(auditCsv.data.raw || "").includes("время"), "audit export csv");
+  const auditMgr = await req("/api/workspace/audit-export", { cookie: mgrACookie });
+  assert(auditMgr.status === 403, "audit export owner only");
+
   console.log("PHASE2_OK", {
     email,
     routing: "round_robin+pool",
@@ -1097,6 +1142,7 @@ async function main() {
     phase9: "snooze+archive+bulk+hours+view-audit",
     phase10: "export+auto-assign+dup-hint+greeting+health-status",
     phase11: "json-import+kanban+availability+widget-brand",
+    phase12: "saved-views+ingest-rate+audit-csv+widget-mobile",
   });
 }
 

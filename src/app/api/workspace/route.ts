@@ -31,6 +31,8 @@ export async function GET() {
       workHoursStart: workspace.workHoursStart,
       workHoursEnd: workspace.workHoursEnd,
       workHoursTz: workspace.workHoursTz,
+      ingestRateLimitMax: workspace.ingestRateLimitMax,
+      ingestRateLimitScope: workspace.ingestRateLimitScope,
       deployMode: deployMode(),
       dataOnThisMachine: deployMode() === "box",
       publicRegistration: deployMode() !== "box",
@@ -59,6 +61,8 @@ export async function PATCH(req: Request) {
         workHoursStart: z.string().max(8).optional(),
         workHoursEnd: z.string().max(8).optional(),
         workHoursTz: z.string().max(64).optional(),
+        ingestRateLimitMax: z.coerce.number().int().min(0).max(10_000).optional(),
+        ingestRateLimitScope: z.enum(["ip", "key"]).optional(),
       })
       .safeParse(body);
     if (!parsed.success) return jsonError("Некорректные данные");
@@ -101,6 +105,8 @@ export async function PATCH(req: Request) {
       workHoursStart: workspace.workHoursStart,
       workHoursEnd: workspace.workHoursEnd,
       workHoursTz: workspace.workHoursTz,
+      ingestRateLimitMax: workspace.ingestRateLimitMax,
+      ingestRateLimitScope: workspace.ingestRateLimitScope,
     });
   });
 }
